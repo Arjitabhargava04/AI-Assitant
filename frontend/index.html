@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Vikramaditya AI</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;}
+body{font-family:'Inter',sans-serif;background:#0D0D0D;color:#E8E2D9;display:flex;flex-direction:column;}
+/* ── Variables ── */
+:root{
+  --bg:#0D0D0D;--bg2:#141414;--bg3:#1C1C1C;--bg4:#222;
+  --b1:#2A2A2A;--b2:#333;
+  --t1:#E8E2D9;--t2:#9A9080;--t3:#6B6055;
+  --ac:#C4934A;--ac2:#8B6A35;--ag:rgba(196,147,74,0.15);
+  --sh:rgba(0,0,0,0.8);
+  --ubg:#1A1712;--abg:#111;
+  --red:#e74c3c;
+}
+/* ── Header ── */
+header{display:flex;align-items:center;padding:0 20px;height:56px;border-bottom:1px solid var(--b1);background:var(--bg2);flex-shrink:0;}
+.logo{width:32px;height:32px;background:linear-gradient(135deg,var(--ac),var(--ac2));border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:600;color:#fff;margin-right:12px;}
+.bname{font-family:'Cormorant Garamond',serif;font-size:19px;font-weight:600;}
+.bname span{color:var(--ac);}
+.bsub{font-size:10px;color:var(--t3);letter-spacing:.08em;text-transform:uppercase;margin-top:1px;}
+/* ── Layout ── */
+.wrap{flex:1;display:flex;flex-direction:column;overflow:hidden;max-width:840px;width:100%;margin:0 auto;padding:0 16px;}
+/* ── Messages ── */
+.msgs{flex:1;overflow-y:auto;padding:20px 0;display:flex;flex-direction:column;gap:18px;scroll-behavior:smooth;}
+.msgs::-webkit-scrollbar{width:4px;}
+.msgs::-webkit-scrollbar-thumb{background:var(--b1);border-radius:2px;}
+/* ── Empty state ── */
+.empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:40px 20px;}
+.eg{font-family:'Cormorant Garamond',serif;font-size:68px;font-weight:300;font-style:italic;color:var(--b2);line-height:1;margin-bottom:14px;}
+.et{font-family:'Cormorant Garamond',serif;font-size:24px;color:var(--t2);margin-bottom:6px;}
+.es{font-size:12px;color:var(--t3);max-width:320px;line-height:1.6;}
+.sugs{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:20px;width:100%;max-width:500px;}
+.sug{padding:10px 13px;background:var(--bg2);border:1px solid var(--b1);border-radius:10px;font-size:12px;color:var(--t2);cursor:pointer;text-align:left;line-height:1.5;transition:all .2s;}
+.sug:hover{border-color:var(--ac);color:var(--ac);background:var(--ag);}
+/* ── Message bubbles ── */
+.msg{display:flex;gap:9px;}
+.msg.user{flex-direction:row-reverse;}
+.av{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0;margin-top:2px;}
+.msg.ai .av{background:linear-gradient(135deg,var(--ac),var(--ac2));font-family:'Cormorant Garamond',serif;font-weight:600;color:#fff;font-size:13px;}
+.msg.user .av{background:var(--bg3);border:1px solid var(--b2);}
+.mb{max-width:calc(100% - 38px);}
+.mm{font-size:10px;color:var(--t3);margin-bottom:3px;display:flex;align-items:center;gap:5px;}
+.msg.user .mm{justify-content:flex-end;}
+.tp{font-size:9px;padding:1px 5px;background:var(--ag);border:1px solid var(--ac2);border-radius:3px;color:var(--ac);text-transform:uppercase;letter-spacing:.05em;}
+.bbl{padding:11px 15px;border-radius:14px;font-size:14px;line-height:1.7;}
+.msg.user .bbl{background:var(--ubg);border:1px solid var(--b2);border-top-right-radius:3px;}
+.msg.ai .bbl{background:var(--abg);border:1px solid var(--b1);border-top-left-radius:3px;}
+.bbl h3{font-family:'Cormorant Garamond',serif;font-size:16px;font-weight:600;color:var(--ac);margin:11px 0 4px;}
+.bbl h3:first-child{margin-top:0;}
+.bbl ul{padding-left:16px;margin:4px 0;}
+.bbl li{margin-bottom:3px;}
+.bbl p{margin-bottom:6px;}
+.bbl p:last-child{margin-bottom:0;}
+.bbl strong{color:var(--t1);font-weight:500;}
+.ftag{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:var(--bg3);border:1px solid var(--b2);border-radius:5px;font-size:11px;color:var(--t2);margin-bottom:5px;display:block;}
+/* ── Typing ── */
+.typing{display:flex;align-items:center;gap:4px;padding:11px 15px;background:var(--abg);border:1px solid var(--b1);border-radius:14px;border-top-left-radius:3px;}
+.d{width:5px;height:5px;background:var(--ac);border-radius:50%;animation:bl 1.2s infinite;}
+.d:nth-child(2){animation-delay:.2s}.d:nth-child(3){animation-delay:.4s}
+@keyframes bl{0%,80%,100%{opacity:.3;transform:scale(.7)}40%{opacity:1;transform:scale(1)}}
+/* ── Audio player in response ── */
+.arow{display:flex;align-items:center;gap:7px;margin-top:9px;padding:6px 11px;background:var(--bg3);border:1px solid var(--b2);border-radius:7px;}
+.pb{width:26px;height:26px;background:var(--ac);border:none;border-radius:50%;color:#fff;cursor:pointer;font-size:9px;display:flex;align-items:center;justify-content:center;}
+.al{font-size:11px;color:var(--t3);}
+/* ── Input area ── */
+.iarea{padding:10px 0 14px;flex-shrink:0;}
+.ibox{background:var(--bg2);border:1px solid var(--b2);border-radius:14px;padding:10px 12px;transition:border-color .2s;}
+.ibox:focus-within{border-color:var(--ac);}
+/* Image preview inside ibox */
+.preview-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;}
+.prev-img-wrap{position:relative;display:inline-block;}
+.prev-img{width:72px;height:72px;object-fit:cover;border-radius:10px;border:1px solid var(--b2);display:block;}
+.prev-rm{position:absolute;top:-6px;right:-6px;width:18px;height:18px;background:var(--bg2);border:1px solid var(--b2);border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--t2);}
+.prev-rm:hover{background:var(--red);color:#fff;border-color:var(--red);}
+.prev-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;background:var(--bg3);border:1px solid var(--b2);border-radius:8px;font-size:12px;color:var(--t2);}
+.prev-chip-rm{cursor:pointer;color:var(--t3);margin-left:4px;}
+.prev-chip-rm:hover{color:var(--red);}
+/* Textarea row */
+.trow{display:flex;align-items:flex-end;gap:8px;}
+textarea{flex:1;background:transparent;border:none;outline:none;color:var(--t1);font-size:14px;font-family:'Inter',sans-serif;resize:none;max-height:120px;line-height:1.5;padding:2px 0;}
+textarea::placeholder{color:var(--t3);}
+.sbtn{width:32px;height:32px;flex-shrink:0;background:var(--ac);border:none;border-radius:9px;color:#fff;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;transition:background .2s;}
+.sbtn:hover{background:var(--ac2);}
+.sbtn:disabled{opacity:.4;cursor:not-allowed;}
+/* Toolbar */
+.tbar{display:flex;align-items:center;gap:6px;padding-top:8px;border-top:1px solid var(--b1);margin-top:8px;}
+/* Plus button */
+.pw{position:relative;}
+.plusbtn{width:28px;height:28px;background:transparent;border:1px solid var(--b2);border-radius:7px;cursor:pointer;color:var(--t2);font-size:17px;display:flex;align-items:center;justify-content:center;transition:all .2s;}
+.plusbtn:hover{border-color:var(--ac);color:var(--ac);}
+/* Main dropdown — NO overflow:hidden so submenu can escape */
+.pmenu{
+  position:absolute;bottom:calc(100% + 8px);left:0;
+  background:var(--bg2);border:1px solid var(--b2);
+  border-radius:11px;width:220px;
+  box-shadow:0 8px 32px var(--sh);
+  display:none;z-index:500;
+  padding:4px 0;
+  animation:su .15s ease;
+}
+.pmenu.open{display:block;}
+@keyframes su{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.pitem{display:flex;align-items:center;gap:9px;padding:9px 13px;cursor:pointer;font-size:13px;color:var(--t2);transition:background .15s;white-space:nowrap;}
+.pitem:hover{background:var(--bg3);color:var(--t1);}
+.pico{font-size:15px;width:20px;text-align:center;flex-shrink:0;}
+.pdiv{height:1px;background:var(--b1);margin:4px 0;}
+/* Style submenu item */
+.style-row{display:flex;align-items:center;gap:9px;padding:9px 13px;cursor:pointer;font-size:13px;color:var(--t2);transition:background .15s;position:relative;}
+.style-row:hover{background:var(--bg3);color:var(--t1);}
+.style-arrow{margin-left:auto;font-size:14px;color:var(--t3);}
+/* Submenu — appears to the right */
+.psub{
+  position:absolute;bottom:0;left:calc(100% + 6px);
+  background:var(--bg2);border:1px solid var(--b2);
+  border-radius:11px;width:190px;
+  box-shadow:0 8px 32px var(--sh);
+  padding:4px 0;
+  display:none;z-index:600;
+}
+.style-row:hover .psub,
+.psub:hover{display:block;}
+.tone-item{display:flex;align-items:center;gap:9px;padding:9px 13px;cursor:pointer;font-size:13px;color:var(--t2);transition:background .15s;}
+.tone-item:hover{background:var(--bg3);color:var(--t1);}
+.tone-item.active{color:var(--ac);}
+.tone-check{margin-left:auto;font-size:12px;color:var(--ac);opacity:0;}
+.tone-item.active .tone-check{opacity:1;}
+/* Audio output button */
+.aob{display:flex;align-items:center;gap:5px;padding:5px 10px;background:transparent;border:1px solid var(--b2);border-radius:7px;cursor:pointer;color:var(--t2);font-size:12px;transition:all .2s;margin-left:auto;white-space:nowrap;}
+.aob.on{border-color:var(--ac);color:var(--ac);background:var(--ag);}
+.aob:hover{border-color:var(--ac);color:var(--ac);}
+.hint{font-size:11px;color:var(--t3);text-align:center;margin-top:7px;}
+/* Recording overlay */
+.recoverlay{position:fixed;inset:0;background:rgba(0,0,0,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:2000;gap:24px;}
+.recoverlay.hidden{display:none;}
+.recpulse{width:18px;height:18px;background:var(--red);border-radius:50%;animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.4;transform:scale(1.4)}}
+.recrow{display:flex;align-items:center;gap:10px;}
+.reclbl{color:rgba(255,255,255,.7);font-size:15px;}
+.rectimer{font-size:56px;font-weight:300;color:#fff;font-family:'Cormorant Garamond',serif;letter-spacing:.05em;}
+.recbtns{display:flex;gap:12px;}
+.recstop{padding:12px 32px;background:var(--red);border:none;border-radius:8px;color:#fff;font-size:14px;cursor:pointer;font-family:'Inter',sans-serif;}
+.recstop:hover{background:#c0392b;}
+.reccancel{padding:12px 20px;background:transparent;border:1px solid rgba(255,255,255,.2);border-radius:8px;color:rgba(255,255,255,.5);font-size:13px;cursor:pointer;font-family:'Inter',sans-serif;}
+/* Video preview in recording overlay */
+#rec-video-preview{width:320px;height:200px;border-radius:10px;object-fit:cover;display:none;border:1px solid var(--b2);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">V</div>
+  <div>
+    <div class="bname">Vikramaditya <span>AI</span></div>
+    <div class="bsub">Heritage &amp; Archaeology</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="msgs" id="msgs">
+    <div class="empty" id="empty">
+      <div class="eg">𝑉</div>
+      <div class="et">Ask about any Heritage Site</div>
+      <div class="es">Temples · Monuments · Dynasties · Sculptures · Excavations</div>
+      <div class="sugs">
+        <div class="sug" onclick="useSug(this)">What dynasty built the Brihadeeswarar Temple?</div>
+        <div class="sug" onclick="useSug(this)">Explain Nagara vs Dravidian architecture</div>
+        <div class="sug" onclick="useSug(this)">Recent excavations at Mohenjo-daro</div>
+        <div class="sug" onclick="useSug(this)">Significance of Ajanta Cave paintings</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="iarea">
+    <div class="ibox">
+      <!-- Attachment previews inside the box -->
+      <div class="preview-row" id="preview-row"></div>
+      <!-- Text + send -->
+      <div class="trow">
+        <textarea id="txt" placeholder="Ask about any monument, temple, dynasty, or artefact..." rows="1" onkeydown="onKey(event)" oninput="grow(this)"></textarea>
+        <button class="sbtn" id="sbtn" onclick="doSend()">➤</button>
+      </div>
+      <!-- Toolbar -->
+      <div class="tbar">
+        <!-- Plus menu -->
+        <div class="pw" id="pw">
+          <button class="plusbtn" id="plusbtn">+</button>
+          <div class="pmenu" id="pmenu">
+
+            <!-- Upload image -->
+            <label class="pitem" onclick="closePlus()">
+              <span class="pico">🖼️</span>Upload Image
+              <input type="file" accept="image/*" style="display:none" onchange="attachFile(this,'image')">
+            </label>
+
+            <!-- Upload audio -->
+            <label class="pitem" onclick="closePlus()">
+              <span class="pico">🎵</span>Upload Audio
+              <input type="file" accept="audio/*" style="display:none" onchange="attachFile(this,'audio')">
+            </label>
+
+            <!-- Upload video -->
+            <label class="pitem" onclick="closePlus()">
+              <span class="pico">🎬</span>Upload Video
+              <input type="file" accept="video/*" style="display:none" onchange="attachFile(this,'video')">
+            </label>
+
+            <!-- Record audio — pure button, NO file input -->
+            <div class="pitem" id="btn-rec-audio">
+              <span class="pico">🎙️</span>Record Audio
+            </div>
+
+            <!-- Record video — pure button, NO file input -->
+            <div class="pitem" id="btn-rec-video">
+              <span class="pico">📹</span>Record Video
+            </div>
+
+            <div class="pdiv"></div>
+
+            <!-- Response Style — hover to open submenu -->
+            <div class="style-row" id="style-row">
+              <span class="pico">✍️</span>
+              <span id="style-lbl">Response Style</span>
+              <span class="style-arrow">›</span>
+              <!-- Submenu flies out to the right -->
+              <div class="psub" id="psub">
+                <div class="tone-item active" data-tone="normal">      <span class="pico">✍️</span>Normal      <span class="tone-check">✓</span></div>
+                <div class="tone-item"        data-tone="researcher">  <span class="pico">🔬</span>Researcher  <span class="tone-check">✓</span></div>
+                <div class="tone-item"        data-tone="concise">     <span class="pico">⚡</span>Concise     <span class="tone-check">✓</span></div>
+                <div class="tone-item"        data-tone="explanatory"> <span class="pico">📖</span>Explanatory <span class="tone-check">✓</span></div>
+                <div class="tone-item"        data-tone="formal">      <span class="pico">🎓</span>Formal      <span class="tone-check">✓</span></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+    <div class="hint">Text · Image · Audio · Video — any combination</div>
+  </div>
+</div>
+
+<!-- Recording overlay -->
+<div class="recoverlay hidden" id="recoverlay">
+  <video id="rec-video-preview" autoplay muted playsinline></video>
+  <div class="recrow">
+    <div class="recpulse"></div>
+    <span class="reclbl" id="reclbl">Recording audio...</span>
+  </div>
+  <div class="rectimer" id="rectimer">0:00</div>
+  <div class="recbtns">
+    <button class="reccancel" onclick="cancelRecord()">Cancel</button>
+    <button class="recstop"   onclick="stopRecord()">■ Stop &amp; Use</button>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:8000';
+let tone = 'normal', audioOut = false, loading = false;
+let files = { image: null, audio: null, video: null };
+let prevUrls = {};
+
+// ── Plus menu ─────────────────────────────────────────────
+const plusbtn = document.getElementById('plusbtn');
+const pmenu   = document.getElementById('pmenu');
+
+plusbtn.addEventListener('click', function(e) {
+  e.stopPropagation();
+  pmenu.classList.toggle('open');
+});
+
+function closePlus() {
+  pmenu.classList.remove('open');
+}
+
+document.addEventListener('click', function(e) {
+  if (!document.getElementById('pw').contains(e.target)) {
+    closePlus();
+  }
+});
+
+// ── Record buttons — wired in JS, no file input interference ──
+document.getElementById('btn-rec-audio').addEventListener('click', function(e) {
+  e.stopPropagation();
+  closePlus();
+  startRecordAudio();
+});
+
+document.getElementById('btn-rec-video').addEventListener('click', function(e) {
+  e.stopPropagation();
+  closePlus();
+  startRecordVideo();
+});
+
+// ── Tone submenu ──────────────────────────────────────────
+document.querySelectorAll('.tone-item').forEach(function(el) {
+  el.addEventListener('click', function(e) {
+    e.stopPropagation();
+    setTone(this.dataset.tone);
+    closePlus();
+  });
+});
+
+function setTone(t) {
+  tone = t;
+  const names = {
+    normal: 'Response Style', researcher: 'Researcher',
+    concise: 'Concise', explanatory: 'Explanatory', formal: 'Formal'
+  };
+  document.getElementById('style-lbl').textContent = names[t] || 'Response Style';
+  document.querySelectorAll('.tone-item').forEach(function(el) {
+    const active = el.dataset.tone === t;
+    el.classList.toggle('active', active);
+  });
+}
+
+// ── Audio output ──────────────────────────────────────────
+function toggleAudio() {
+  audioOut = !audioOut;
+  const b = document.getElementById('aob');
+  b.classList.toggle('on', audioOut);
+  b.textContent = audioOut ? '🔊 Speaking on' : '🔊 Speak answer';
+}
+
+// ── File attach ───────────────────────────────────────────
+function attachFile(input, type) {
+  const f = input.files[0];
+  if (!f) return;
+  files[type] = f;
+  if (prevUrls[type]) URL.revokeObjectURL(prevUrls[type]);
+  prevUrls[type] = type === 'image' ? URL.createObjectURL(f) : null;
+  renderPreviews();
+}
+
+function removeFile(type) {
+  if (prevUrls[type]) { URL.revokeObjectURL(prevUrls[type]); delete prevUrls[type]; }
+  files[type] = null;
+  renderPreviews();
+}
+
+function renderPreviews() {
+  const row = document.getElementById('preview-row');
+  row.innerHTML = '';
+  const hasAny = files.image || files.audio || files.video;
+  if (!hasAny) return;
+
+  if (files.image && prevUrls.image) {
+    const w = document.createElement('div');
+    w.className = 'prev-img-wrap';
+    w.innerHTML = '<img src="' + prevUrls.image + '" class="prev-img" alt="preview">'
+      + '<div class="prev-rm" onclick="removeFile(\'image\')">✕</div>';
+    row.appendChild(w);
+  }
+  ['audio', 'video'].forEach(function(t) {
+    if (!files[t]) return;
+    const ico = t === 'audio' ? '🎙️' : '📹';
+    const c = document.createElement('div');
+    c.className = 'prev-chip';
+    c.innerHTML = ico + ' ' + files[t].name.substring(0, 22)
+      + '<span class="prev-chip-rm" onclick="removeFile(\'' + t + '\')">✕</span>';
+    row.appendChild(c);
+  });
+}
+
+// ── Recording ─────────────────────────────────────────────
+let mediaRec = null, recChunks = [], recStream = null, recTimer = null, recSecs = 0;
+
+function showOverlay(type) {
+  recSecs = 0;
+  document.getElementById('rectimer').textContent = '0:00';
+  document.getElementById('reclbl').textContent = type === 'audio' ? 'Recording audio...' : 'Recording video...';
+  document.getElementById('recoverlay').classList.remove('hidden');
+  recTimer = setInterval(function() {
+    recSecs++;
+    const m = Math.floor(recSecs / 60), s = recSecs % 60;
+    document.getElementById('rectimer').textContent = m + ':' + (s < 10 ? '0' : '') + s;
+  }, 1000);
+}
+
+function hideOverlay() {
+  document.getElementById('recoverlay').classList.add('hidden');
+  clearInterval(recTimer);
+  // Hide video preview
+  const vp = document.getElementById('rec-video-preview');
+  vp.style.display = 'none';
+  vp.srcObject = null;
+}
+
+async function startRecordAudio() {
+  try {
+    recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recChunks = [];
+    mediaRec = new MediaRecorder(recStream);
+    mediaRec.ondataavailable = function(e) { if (e.data.size > 0) recChunks.push(e.data); };
+    mediaRec.onstop = function() {
+      const blob = new Blob(recChunks, { type: 'audio/webm' });
+      files.audio = new File([blob], 'voice-recording.webm', { type: 'audio/webm' });
+      recStream.getTracks().forEach(function(t) { t.stop(); });
+      renderPreviews();
+    };
+    mediaRec.start(100);
+    showOverlay('audio');
+  } catch(e) {
+    alert('Microphone access denied. Please allow microphone in your browser settings.');
+  }
+}
+
+async function startRecordVideo() {
+  try {
+    recStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    // Show live camera preview in overlay
+    const vp = document.getElementById('rec-video-preview');
+    vp.srcObject = recStream;
+    vp.style.display = 'block';
+
+    recChunks = [];
+    mediaRec = new MediaRecorder(recStream);
+    mediaRec.ondataavailable = function(e) { if (e.data.size > 0) recChunks.push(e.data); };
+    mediaRec.onstop = function() {
+      const blob = new Blob(recChunks, { type: 'video/webm' });
+      files.video = new File([blob], 'video-recording.webm', { type: 'video/webm' });
+      recStream.getTracks().forEach(function(t) { t.stop(); });
+      renderPreviews();
+    };
+    mediaRec.start(100);
+    showOverlay('video');
+  } catch(e) {
+    alert('Camera/microphone access denied. Please allow access in your browser settings.');
+  }
+}
+
+function stopRecord() {
+  if (mediaRec && mediaRec.state !== 'inactive') mediaRec.stop();
+  hideOverlay();
+}
+
+function cancelRecord() {
+  if (mediaRec && mediaRec.state !== 'inactive') {
+    mediaRec.ondataavailable = null;
+    mediaRec.onstop = null;
+    mediaRec.stop();
+  }
+  if (recStream) recStream.getTracks().forEach(function(t) { t.stop(); });
+  recChunks = [];
+  files.audio = null;
+  files.video = null;
+  hideOverlay();
+  renderPreviews();
+}
+
+// ── Textarea grow ─────────────────────────────────────────
+function grow(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+function onKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); doSend(); }
+}
+function useSug(el) {
+  document.getElementById('txt').value = el.textContent;
+  doSend();
+}
+
+// ── New chat ──────────────────────────────────────────────
+function newChat() {
+  document.getElementById('msgs').innerHTML =
+    '<div class="empty" id="empty">'
+    + '<div class="eg">𝑉</div>'
+    + '<div class="et">Ask about any Heritage Site</div>'
+    + '<div class="es">Temples · Monuments · Dynasties · Sculptures · Excavations</div>'
+    + '<div class="sugs">'
+    + '<div class="sug" onclick="useSug(this)">What dynasty built the Brihadeeswarar Temple?</div>'
+    + '<div class="sug" onclick="useSug(this)">Explain Nagara vs Dravidian architecture</div>'
+    + '<div class="sug" onclick="useSug(this)">Recent excavations at Mohenjo-daro</div>'
+    + '<div class="sug" onclick="useSug(this)">Significance of Ajanta Cave paintings</div>'
+    + '</div></div>';
+  files = { image: null, audio: null, video: null };
+  Object.values(prevUrls).forEach(function(u) { if (u) URL.revokeObjectURL(u); });
+  prevUrls = {};
+  renderPreviews();
+}
+
+// ── Send ──────────────────────────────────────────────────
+async function doSend() {
+  if (loading) return;
+  const txt = document.getElementById('txt').value.trim();
+  if (!txt && !files.image && !files.audio && !files.video) return;
+
+  loading = true;
+  document.getElementById('sbtn').disabled = true;
+
+  const empty = document.getElementById('empty');
+  if (empty) empty.remove();
+
+  const sf = Object.assign({}, files);
+  const sp = Object.assign({}, prevUrls);
+  addUserMsg(txt, sf, sp);
+
+  document.getElementById('txt').value = '';
+  document.getElementById('txt').style.height = 'auto';
+  files = { image: null, audio: null, video: null };
+  Object.values(prevUrls).forEach(function(u) { if (u) URL.revokeObjectURL(u); });
+  prevUrls = {};
+  renderPreviews();
+
+  const tid = showTyping();
+
+  try {
+    const fd = new FormData();
+    fd.append('text', txt);
+    fd.append('tone', tone);
+    fd.append('wants_audio_out', audioOut);
+    if (sf.image) fd.append('image', sf.image);
+    if (sf.audio) fd.append('audio', sf.audio);
+    if (sf.video) fd.append('video', sf.video);
+
+    const res  = await fetch(API + '/query', { method: 'POST', body: fd });
+    const data = await res.json();
+    removeTyping(tid);
+    addAIMsg(data.answer || data.error || 'No response.', data.audio_b64, tone);
+  } catch(err) {
+    removeTyping(tid);
+    addAIMsg('Could not connect to server. Make sure the backend is running on http://localhost:8000', null, tone);
+  }
+
+  loading = false;
+  document.getElementById('sbtn').disabled = false;
+}
+
+// ── Add user message ──────────────────────────────────────
+function addUserMsg(txt, sf, sp) {
+  const msgs = document.getElementById('msgs');
+  let media = '';
+  if (sf.image && sp.image) {
+    media += '<div style="margin-bottom:8px"><img src="' + sp.image
+      + '" style="max-width:260px;max-height:200px;border-radius:12px;object-fit:cover;border:1px solid #333;display:block;" alt="image"></div>';
+  }
+  if (sf.audio) media += '<div class="ftag">🎙️ ' + sf.audio.name + '</div>';
+  if (sf.video) media += '<div class="ftag">📹 ' + sf.video.name + '</div>';
+  const t = txt ? '<p>' + esc(txt) + '</p>' : '';
+
+  const div = document.createElement('div');
+  div.className = 'msg user';
+  div.innerHTML = '<div class="av">👤</div>'
+    + '<div class="mb"><div class="mm" style="justify-content:flex-end">You</div>'
+    + '<div class="bbl">' + media + t + '</div></div>';
+  msgs.appendChild(div);
+  bot();
+}
+
+// ── Add AI message ────────────────────────────────────────
+function addAIMsg(md, ab, ct) {
+  const msgs = document.getElementById('msgs');
+  const mid  = 'm' + Date.now();
+  const tp   = ct && ct !== 'normal' ? '<span class="tp">' + ct + '</span>' : '';
+  let audio  = '';
+  if (ab) {
+    audio = '<div class="arow"><button class="pb" onclick="playA(\'' + mid + '_a\')">▶</button>'
+      + '<span class="al">Listen to answer</span>'
+      + '<audio id="' + mid + '_a" src="data:audio/wav;base64,' + ab + '" style="display:none"></audio></div>';
+  }
+  const div = document.createElement('div');
+  div.className = 'msg ai';
+  div.id = mid;
+  div.innerHTML = '<div class="av">V</div>'
+    + '<div class="mb"><div class="mm">Vikramaditya AI ' + tp + '</div>'
+    + '<div class="bbl">' + mdRender(md) + audio + '</div></div>';
+  msgs.appendChild(div);
+  bot();
+}
+
+// ── Typing indicator ──────────────────────────────────────
+function showTyping() {
+  const id   = 't' + Date.now();
+  const msgs = document.getElementById('msgs');
+  const div  = document.createElement('div');
+  div.className = 'msg ai';
+  div.id = id;
+  div.innerHTML = '<div class="av">V</div><div class="mb">'
+    + '<div class="typing"><div class="d"></div><div class="d"></div><div class="d"></div></div>'
+    + '</div>';
+  msgs.appendChild(div);
+  bot();
+  return id;
+}
+function removeTyping(id) {
+  const el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+// ── Helpers ───────────────────────────────────────────────
+function playA(id) {
+  const a = document.getElementById(id);
+  if (!a) return;
+  if (a.paused) a.play(); else { a.pause(); a.currentTime = 0; }
+}
+function bot() {
+  const m = document.getElementById('msgs');
+  m.scrollTop = m.scrollHeight;
+}
+function esc(t) {
+  return (t || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function mdRender(md) {
+  if (!md) return '';
+  let h = esc(md);
+  h = h.replace(/### (.*?)(\n|$)/g, '<h3>$1</h3>');
+  h = h.replace(/## (.*?)(\n|$)/g,  '<h3>$1</h3>');
+  h = h.replace(/\*\*(.*?)\*\*/g,   '<strong>$1</strong>');
+  h = h.replace(/\*(.*?)\*/g,       '<em>$1</em>');
+  h = h.replace(/`(.*?)`/g,         '<code>$1</code>');
+  h = h.replace(/^- (.*?)$/gm,      '<li>$1</li>');
+  h = h.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
+  h = h.replace(/\n\n/g, '</p><p>');
+  h = h.replace(/\n/g, '<br>');
+  h = '<p>' + h + '</p>';
+  h = h.replace(/<p><\/p>/g, '');
+  return h;
+}
+</script>
+</body>
+</html>

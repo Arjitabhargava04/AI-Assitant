@@ -1,0 +1,74 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+vikramaditya_env/
+venv/
+env/
+
+# =========================
+# Environment variables
+# =========================
+.env
+.env.*
+
+# =========================
+# Logs & Debug
+# =========================
+*.log
+debug.log
+
+# =========================
+# VS Code / IDE
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Node / Frontend (if you add later)
+# =========================
+node_modules/
+package-lock.json
+yarn.lock
+
+# =========================
+# Temporary / Cache
+# =========================
+.cache/
+*.tmp
+
+# =========================
+# Build / Static files (optional)
+# =========================
+staticfiles/
+media/
+
+# =========================
+# Testing
+# =========================
+.pytest_cache/
+.coverage
+htmlcov/
+
+# =========================
+# Jupyter (if used)
+# =========================
+.ipynb_checkpoints/
