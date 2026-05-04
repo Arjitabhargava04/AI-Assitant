@@ -20,7 +20,8 @@ from vision.web_images import fetch_and_verify_images, build_image_search_query
 from utils.image_intent import detect_image_intent
 from config.settings import DEEP_TONES
 from utils.debug import log, log_separator
-
+from corrections.injector import find_relevant_correction, build_correction_prompt_prefix
+from db.queries import save_message, get_recent_messages
 
 async def handle_query(payload: InputPayload) -> dict:
     """
@@ -57,11 +58,27 @@ async def handle_query(payload: InputPayload) -> dict:
     # Check tone — determines model path
     use_deep = payload.tone in DEEP_TONES
 
+    # Check corrections database before calling AI
+    correction_prefix = ""
+    gemini_summary    = ""
+    try:
+        correction = await find_relevant_correction(
+            gemini_summary=payload.text or "",
+            question_text=payload.text or "",
+        )
+        if correction:
+            correction_prefix = build_correction_prompt_prefix(correction)
+            log("PIPELINE", "Correction found — injecting into prompt", "success")
+        else:
+            log("PIPELINE", "No correction found", "info")
+    except Exception as e:
+        log("PIPELINE", f"Correction check failed (non-fatal): {e}", "warn")
+
     try:
         if use_deep:
-            answer = await _deep_path(payload, route)
+            answer, gemini_summary = await _deep_path(payload, route, correction_prefix)
         else:
-            answer = await _direct_path(payload, route)
+            answer, gemini_summary = await _direct_path(payload, route, correction_prefix)
     except Exception as e:
         log("PIPELINE", f"Failed: {e}", "error")
         return _error(f"Something went wrong: {e}")
@@ -81,15 +98,16 @@ async def handle_query(payload: InputPayload) -> dict:
     log_separator("PIPELINE COMPLETE")
 
     return {
-        "answer": answer,
-        "images": images,
-        "route":  route,
-        "tone":   payload.tone,
-        "error":  None,
+        "answer":         answer,
+        "images":         images,
+        "gemini_summary": gemini_summary,
+        "route":          route,
+        "tone":           payload.tone,
+        "error":          None,
     }
 
 
-async def _direct_path(payload: InputPayload, route: str) -> str:
+async def _direct_path(payload: InputPayload, route: str, correction_prefix: str = "") -> tuple:
     """
     Normal/Concise/Explanatory — Gemini answers directly.
     Vision runs in parallel if image present.
@@ -144,18 +162,23 @@ async def _direct_path(payload: InputPayload, route: str) -> str:
         if vision_context:
             enriched_text = f"{enriched_text}\n\n[Visual Web Context]\n{vision_context}".strip()
 
+        history = []
+        if payload.chat_id:
+            history = get_recent_messages(payload.chat_id, limit=6)
+
         answer = await asyncio.to_thread(
             call_gemini_direct,
             enriched_text,
             payload.image_bytes, payload.image_mime,
             None, "", None, "",
             payload.tone,
+            history,
         )
 
-    return answer
+    return answer, ""
 
 
-async def _deep_path(payload: InputPayload, route: str) -> str:
+async def _deep_path(payload: InputPayload, route: str, correction_prefix: str = "") -> tuple:
     """
     Researcher/Formal — Gemini perception + Claude deep analysis.
     Vision runs in parallel with Gemini perception.
@@ -231,9 +254,10 @@ async def _deep_path(payload: InputPayload, route: str) -> str:
         payload.image_bytes,
         payload.image_mime,
         payload.tone,
+        correction_prefix,
     )
 
-    return answer
+    return answer, gemini_findings
 
 
 async def _fetch_images(

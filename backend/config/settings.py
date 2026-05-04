@@ -17,7 +17,7 @@ GOOGLE_SEARCH_KEY   = os.getenv("GOOGLE_SEARCH_KEY", "")   # Custom Search API k
 GOOGLE_SEARCH_CX    = os.getenv("GOOGLE_SEARCH_CX", "")    # Custom Search Engine ID
 
 # ── Models ────────────────────────────────────────────────
-# CLAUDE_MODEL  = os.getenv("CLAUDE_MODEL",  "claude-sonnet-4-6")
+# # CLAUDE_MODEL  = os.getenv("CLAUDE_MODEL",  "claude-sonnet-4-6")
 # for testing 
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL",  "claude-haiku-4-5-20251001")
 GEMINI_MODEL  = os.getenv("GEMINI_MODEL",  "gemini-3.1-flash-lite-preview")
@@ -76,11 +76,24 @@ HINDI_UNICODE_END   = 0x097F
 
 HINGLISH_MARKERS = [
     "kya", "kaise", "kahan", "kaun", "kitna", "kyun", "kab",
-    "batao", "bolo", "btao", "chahiye", "dijiye",
-    "hai", "hain", "tha", "the", "thi",
-    "aur", "ya", "lekin", "toh", "par", "pe",
-    "mein", "se", "ko", "ka", "ki", "ke",
-    "yeh", "woh", "nahi", "haan", "bilkul",
-    "mandir", "masjid", "qila", "purana", "naya",
-    "dikhao", "dikha", "dekhna", "batao",
+    "batao", "bolo", "btao", "chahiye", "dijiye", "dikhao", "dikha",
+    "hai", "hain", "nahi", "nahin", "haan", "bilkul",
+    "tha", "thi",
+    "aur", "lekin", "toh", "magar",
+    "mein", "wala", "wali",
+    "yeh", "woh", "unka", "uska", "iska",
+    "abhi", "phir", "bahut", "thoda", "zyada",
+    "matlab", "samjhe", "pata", "lagta",
 ]
+
+# ── Database ──────────────────────────────────────────────
+DB_HOST     = os.getenv("DB_HOST",     "127.0.0.1")
+DB_PORT     = os.getenv("DB_PORT",     "3306")
+DB_USER     = os.getenv("DB_USER",     "root")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+DB_NAME     = os.getenv("DB_NAME",     "vikramaditya")
+
+# ── Auth ──────────────────────────────────────────────────
+JWT_SECRET       = os.getenv("JWT_SECRET",       "change_this_to_a_long_random_string")
+JWT_EXPIRE_HOURS = os.getenv("JWT_EXPIRE_HOURS", "8760")   # 1 year = permanent login
+ADMIN_EMAIL      = os.getenv("ADMIN_EMAIL",      "")

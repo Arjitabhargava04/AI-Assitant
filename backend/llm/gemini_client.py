@@ -66,6 +66,7 @@ def call_gemini_direct(
     video_bytes: bytes = None,
     video_mime:  str   = "",
     tone:        str   = "normal",
+    history:     list  = None,
 ) -> str:
     """
     Gemini answers directly — for Normal/Concise/Explanatory tones.
@@ -82,9 +83,22 @@ def call_gemini_direct(
 
     log("GEMINI", f"Tone: {tone} | Lang: {language} | Parts: {len(parts)}", "info")
 
+    if history:
+        contents = []
+        for msg in history:
+            role = "user" if msg["role"] == "user" else "model"
+            contents.append(types.Content(
+            role=role,
+            parts=[types.Part.from_text(text=msg["content"])]
+                    ))
+                # Add current message parts at the end
+            contents.append(types.Content(role="user", parts=parts))
+    else:
+        contents = parts
+
     response = _client.models.generate_content(
         model=GEMINI_MODEL,
-        contents=parts,
+        contents=contents,
         config=types.GenerateContentConfig(
             system_instruction=system_prompt,
             temperature=0.3,

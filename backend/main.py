@@ -1,18 +1,32 @@
 """
 main.py
 =======
-FastAPI application.
-New endpoints:
-  POST /query  — main query (no TTS, returns images if requested)
-  POST /speak  — TTS for a specific answer text (on demand)
-  GET  /health — health check
-  GET  /tones  — available tones
+FastAPI application — all endpoints.
+
+Endpoints:
+  POST /auth/signup     — create account
+  POST /auth/login      — login, get permanent token
+  GET  /auth/me         — get current user info
+
+  GET  /chats           — user's chat history
+  POST /chats           — create new chat
+  GET  /chats/{id}/messages — load a past chat
+  PATCH /chats/{id}/title   — update chat title
+  GET  /chats/all       — admin: all users' chats
+
+  POST /corrections             — admin: save correction
+  GET  /corrections             — admin: list corrections
+  PATCH /corrections/{id}/deactivate — admin: turn off correction
+
+  POST /query           — main AI query
+  POST /speak           — on-demand TTS
+  GET  /health          — health check
 """
 
 import base64
 import asyncio
-from fastapi import FastAPI, File, Form, UploadFile, HTTPException
-from fastapi.responses import JSONResponse, Response
+from fastapi import FastAPI, File, Form, UploadFile, HTTPException, Depends
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
@@ -20,6 +34,12 @@ from contextlib import asynccontextmanager
 from api.pipeline import handle_query
 from api.router import InputPayload
 from audio.tts import clean_for_tts, text_to_speech
+from auth.routes import router as auth_router
+from auth.middleware import require_auth
+from chats.routes import router as chats_router
+from corrections.routes import router as corrections_router
+from db.connection import test_connection
+from db.queries import save_message
 from config.settings import DEBUG_MODE, TONE_PRESETS
 from utils.debug import log, log_separator
 
@@ -28,7 +48,14 @@ from utils.debug import log, log_separator
 async def lifespan(app: FastAPI):
     log_separator("VIKRAMADITYA AI STARTING")
     log("APP", f"Debug mode: {DEBUG_MODE}", "info")
-    log("APP", f"Available tones: {list(TONE_PRESETS.keys())}", "info")
+    log("APP", f"Tones: {list(TONE_PRESETS.keys())}", "info")
+
+    # Test DB connection on startup
+    if test_connection():
+        log("APP", "Database ready", "success")
+    else:
+        log("APP", "Database connection FAILED — check .env DB settings", "error")
+
     log("APP", "Server ready.", "success")
     yield
     log("APP", "Server shutting down.", "warn")
@@ -36,8 +63,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Vikramaditya AI",
-    description="Heritage and Archaeology AI — multimodal, two-model pipeline.",
-    version="3.0.0",
+    description="Heritage and Archaeology AI",
+    version="4.0.0",
     lifespan=lifespan,
 )
 
@@ -49,28 +76,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Register route groups ─────────────────────────────────
+app.include_router(auth_router,        prefix="/auth",        tags=["auth"])
+app.include_router(chats_router,       prefix="/chats",       tags=["chats"])
+app.include_router(corrections_router, prefix="/corrections", tags=["corrections"])
+
 
 # ── POST /query ───────────────────────────────────────────
 
 @app.post("/query")
 async def query(
-    text:  str        = Form(default=""),
-    tone:  str        = Form(default="normal"),
-    image: UploadFile = File(default=None),
-    audio: UploadFile = File(default=None),
-    video: UploadFile = File(default=None),
+    text:    str        = Form(default=""),
+    tone:    str        = Form(default="normal"),
+    chat_id: str        = Form(default=""),
+    image:   UploadFile = File(default=None),
+    audio:   UploadFile = File(default=None),
+    video:   UploadFile = File(default=None),
+    user:    dict       = Depends(require_auth),
 ):
     """
-    Main query endpoint.
-    Accepts text, image, audio, video — any combination.
-    Returns answer + optional image URLs.
-    TTS is NOT included — use /speak for on-demand audio.
+    Main query endpoint — requires authentication.
+    Saves user message + AI answer to chat history.
+    Checks corrections database before calling AI.
     """
     log_separator("INCOMING REQUEST")
-    log("APP", f"text={bool(text)} image={bool(image)} audio={bool(audio)} video={bool(video)} tone={tone}", "info")
+    log("APP", f"User: {user['email']} | text={bool(text)} image={bool(image)} audio={bool(audio)} video={bool(video)} tone={tone}", "info")
 
     if tone not in TONE_PRESETS:
         tone = "normal"
+
+    # Detect input type for message saving
+    input_type = "text"
+    if image and audio and video: input_type = "mixed"
+    elif image and audio:         input_type = "mixed"
+    elif image and video:         input_type = "mixed"
+    elif image:                   input_type = "image"
+    elif audio:                   input_type = "audio"
+    elif video:                   input_type = "video"
 
     image_bytes = await image.read() if image else None
     image_mime  = image.content_type if image else ""
@@ -88,16 +130,43 @@ async def query(
         video_bytes = video_bytes,
         video_mime  = video_mime,
         tone        = tone,
+        user_id     = user["id"],
+        chat_id     = chat_id,
     )
 
     result = await handle_query(payload)
 
+    # Save messages to DB if we have a chat_id
+    if chat_id:
+        try:
+            # Save user message
+            user_content = text or f"[{input_type} uploaded]"
+            save_message(
+                chat_id=chat_id,
+                user_id=user["id"],
+                role="user",
+                content=user_content,
+                input_type=input_type,
+            )
+            # Save assistant answer with gemini summary
+            save_message(
+                chat_id=chat_id,
+                user_id=user["id"],
+                role="assistant",
+                content=result["answer"],
+                gemini_summary=result.get("gemini_summary", ""),
+                input_type="text",
+            )
+        except Exception as e:
+            log("APP", f"Failed to save messages: {e}", "warn")
+
     return JSONResponse({
-        "answer": result["answer"],
-        "images": result.get("images", []),
-        "route":  result["route"],
-        "tone":   result["tone"],
-        "error":  result.get("error"),
+        "answer":         result["answer"],
+        "images":         result.get("images", []),
+        "gemini_summary": result.get("gemini_summary", ""),
+        "route":          result["route"],
+        "tone":           result["tone"],
+        "error":          result.get("error"),
     })
 
 
@@ -109,13 +178,9 @@ class SpeakRequest(BaseModel):
 
 
 @app.post("/speak")
-async def speak(req: SpeakRequest):
-    """
-    On-demand TTS — converts answer text to audio.
-    Called when user clicks Speak button on a specific message.
-    Returns base64 WAV audio.
-    """
-    log("APP", f"TTS request — {len(req.text)} chars | Voice: {req.voice}", "info")
+async def speak(req: SpeakRequest, user: dict = Depends(require_auth)):
+    """On-demand TTS — called when user clicks Speak on a message."""
+    log("APP", f"TTS: {len(req.text)} chars | Voice: {req.voice}", "info")
 
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="No text provided")
@@ -134,14 +199,7 @@ async def speak(req: SpeakRequest):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "Vikramaditya AI", "version": "3.0.0"}
-
-
-# ── GET /tones ────────────────────────────────────────────
-
-@app.get("/tones")
-async def get_tones():
-    return {"tones": list(TONE_PRESETS.keys())}
+    return {"status": "ok", "service": "Vikramaditya AI", "version": "4.0.0"}
 
 
 if __name__ == "__main__":

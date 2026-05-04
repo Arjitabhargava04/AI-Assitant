@@ -43,7 +43,7 @@ def detect_language(text: str) -> str:
     hinglish_word_count = sum(1 for w in words if w in HINGLISH_MARKERS)
     hinglish_word_ratio = hinglish_word_count / len(words) if words else 0
 
-    if hindi_ratio > 0 or hinglish_word_ratio >= 0.15:
+    if hindi_ratio > 0 or hinglish_word_ratio >= 0.25:
         log("LANG", f"Detected: HINGLISH (markers: {hinglish_word_count}/{len(words)})", "info")
         return "hinglish"
 
