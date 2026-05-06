@@ -277,7 +277,6 @@ export default function Admin() {
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         <header className="flex items-center justify-between px-5 h-14 border-b border-b1 bg-bg2 flex-shrink-0">
           <div className="font-serif text-t2 text-base">Admin Tuning Interface</div>
-          <div className="text-xs text-t3">Yes/No buttons appear on each answer</div>
         </header>
 
         <div className="flex-1 flex flex-col overflow-hidden max-w-3xl w-full mx-auto px-4">

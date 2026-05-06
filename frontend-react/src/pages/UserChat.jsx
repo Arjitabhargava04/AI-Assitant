@@ -164,9 +164,9 @@ export default function UserChat() {
               {messages.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center text-center py-10">
                   <div className="font-serif text-7xl font-light italic text-b2 leading-none mb-4">𝑉</div>
-                  <div className="font-serif text-2xl text-t2 mb-2">Ask about any Heritage Site</div>
+                  <div className="font-serif text-2xl text-t2 mb-2">Discover Heritage, Archaeology, and Culture</div>
                   <div className="text-xs text-t3 max-w-xs leading-relaxed mb-6">
-                    Temples · Monuments · Dynasties · Sculptures · Excavations
+                    Temples · Monuments · Dynasties · Sculptures · Culture · Excavations
                   </div>
                   
                 </div>
