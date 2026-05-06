@@ -58,15 +58,16 @@ def _build_parts(
 
 @timer("GEMINI")
 def call_gemini_direct(
-    text:        str   = "",
-    image_bytes: bytes = None,
-    image_mime:  str   = "",
-    audio_bytes: bytes = None,
-    audio_mime:  str   = "",
-    video_bytes: bytes = None,
-    video_mime:  str   = "",
-    tone:        str   = "normal",
-    history:     list  = None,
+    text:              str   = "",
+    image_bytes:       bytes = None,
+    image_mime:        str   = "",
+    audio_bytes:       bytes = None,
+    audio_mime:        str   = "",
+    video_bytes:       bytes = None,
+    video_mime:        str   = "",
+    tone:              str   = "normal",
+    history:           list  = None,
+    correction_prefix: str   = "",
 ) -> str:
     """
     Gemini answers directly — for Normal/Concise/Explanatory tones.
@@ -76,6 +77,9 @@ def call_gemini_direct(
     log_separator("GEMINI DIRECT")
     language      = detect_language(text) if text else "english"
     system_prompt = get_gemini_system_prompt(tone, language)
+    if correction_prefix:
+        system_prompt = correction_prefix + "\n\n" + system_prompt
+        log("GEMINI", "Correction prefix injected into system prompt", "success")
     parts         = _build_parts(text, image_bytes, image_mime, audio_bytes, audio_mime, video_bytes, video_mime)
 
     if not parts:
@@ -88,11 +92,11 @@ def call_gemini_direct(
         for msg in history:
             role = "user" if msg["role"] == "user" else "model"
             contents.append(types.Content(
-            role=role,
-            parts=[types.Part.from_text(text=msg["content"])]
-                    ))
-                # Add current message parts at the end
-            contents.append(types.Content(role="user", parts=parts))
+                role=role,
+                parts=[types.Part.from_text(text=msg["content"])]
+            ))
+        # Add current message ONCE at the end — outside the loop
+        contents.append(types.Content(role="user", parts=parts))
     else:
         contents = parts
 

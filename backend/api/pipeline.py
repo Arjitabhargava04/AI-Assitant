@@ -130,6 +130,8 @@ async def _direct_path(payload: InputPayload, route: str, correction_prefix: str
             payload.audio_bytes, payload.audio_mime,
             payload.video_bytes, payload.video_mime,
             payload.tone,
+            None,
+            correction_prefix,
         )
 
     elif route == "route_c":
@@ -147,6 +149,8 @@ async def _direct_path(payload: InputPayload, route: str, correction_prefix: str
             payload.image_bytes, payload.image_mime,
             None, "", None, "",
             payload.tone,
+            None,
+            correction_prefix,
         )
 
     else:
@@ -173,6 +177,7 @@ async def _direct_path(payload: InputPayload, route: str, correction_prefix: str
             None, "", None, "",
             payload.tone,
             history,
+            correction_prefix,
         )
 
     return answer, ""

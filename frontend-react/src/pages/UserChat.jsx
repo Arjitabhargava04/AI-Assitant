@@ -6,7 +6,6 @@ import InputArea from '../components/InputArea';
 import { UserBubble, AIBubble, TypingIndicator } from '../components/MessageBubble';
 import ProjectsView from './ProjectsView';
 import ProjectDetail from './ProjectDetail';
-
 // const SUGGESTIONS = [
 //   'What dynasty built the Brihadeeswarar Temple?',
 //   'Explain Nagara vs Dravidian architecture',
@@ -22,7 +21,10 @@ export default function UserChat() {
   const [chatTitle, setChatTitle]       = useState('Heritage & Archaeology AI');
   // view: 'chat' | 'projects' | 'project-detail'
   const [view, setView]                 = useState('chat');
-  const [activeProject, setActiveProject] = useState(null);
+  const [activeProject, setActiveProject]           = useState(null);
+  const [activeProjectForChat, setActiveProjectForChat] = useState(null);
+  const activeProjectForChatRef = useRef(null);
+  const [projectRefreshKey, setProjectRefreshKey]       = useState(0);
   const msgsEndRef = useRef(null);
 
   useEffect(() => { loadChats(); }, []);
@@ -64,6 +66,17 @@ export default function UserChat() {
     setCurrentChatId(null);
     setMessages([]);
     setChatTitle('Heritage & Archaeology AI');
+    setActiveProjectForChat(null);
+    activeProjectForChatRef.current = null;      // ← clear ref too
+  }
+
+  function newChatInProject(project) {
+    setView('chat');
+    setCurrentChatId(null);
+    setMessages([]);
+    setChatTitle(project.name);
+    setActiveProjectForChat(project);
+    activeProjectForChatRef.current = project;   // ← ref always has latest value
   }
 
   async function ensureChatId(firstMsg) {
@@ -77,6 +90,20 @@ export default function UserChat() {
       const data = await res.json();
       setCurrentChatId(data.id);
       setChatTitle(data.title || 'New conversation');
+
+      // If chat was started inside a project — assign it automatically
+      const projectToAssign = activeProjectForChatRef.current;
+      if (projectToAssign) {
+        await authFetch(`/chats/${data.id}/project`, {
+          method:  'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ project_id: projectToAssign.id }),
+        });
+        setActiveProjectForChat(null);
+        activeProjectForChatRef.current = null;
+        setProjectRefreshKey(k => k + 1);
+      }
+
       await loadChats();
       return data.id;
     } catch(e) { console.error(e); return ''; }
@@ -145,11 +172,13 @@ export default function UserChat() {
       )}
 
       {/* Project detail view */}
-      {view === 'project-detail' && activeProject && (
+     {view === 'project-detail' && activeProject && (
         <ProjectDetail
           project={activeProject}
           onBack={() => setView('projects')}
           onSelectChat={(chatId, title) => selectChat(chatId, title)}
+          onNewChatInProject={newChatInProject}
+          refreshKey={projectRefreshKey}
         />
       )}
 

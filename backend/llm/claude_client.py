@@ -89,11 +89,12 @@ def _run_search_pass(system_prompt, messages, tool, pass_name, max_rounds=4):
 
 @timer("CLAUDE")
 def call_claude_deep(
-    gemini_findings: str,
-    user_question:   str,
-    image_bytes:     bytes = None,
-    image_mime:      str   = "",
-    tone:            str   = "researcher",
+    gemini_findings:   str,
+    user_question:     str,
+    image_bytes:       bytes = None,
+    image_mime:        str   = "",
+    tone:              str   = "researcher",
+    correction_prefix: str   = "",
 ) -> str:
     """
     Claude deep analysis — only for Researcher/Formal tones.
@@ -104,13 +105,16 @@ def call_claude_deep(
         image_bytes:     original image (Claude sees it too for independent verification)
         image_mime:      image mime type
         tone:            researcher or formal
-
+        correction_prefix: prefix for correcting the answer
     Returns:
         Deep scholarly answer string
     """
     log_separator("CLAUDE DEEP ANALYSIS")
     language      = detect_language(user_question) if user_question else "english"
     system_prompt = get_claude_system_prompt(tone, language)
+    if correction_prefix:
+        system_prompt = correction_prefix + "\n\n" + system_prompt
+        log("CLAUDE", "Correction prefix injected into system prompt", "success")
 
     log("CLAUDE", f"Tone: {tone} | Lang: {language} | Has image: {bool(image_bytes)}", "info")
 

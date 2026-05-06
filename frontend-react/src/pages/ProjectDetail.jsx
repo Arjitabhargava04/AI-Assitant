@@ -2,11 +2,11 @@
 import { useState, useEffect } from 'react';
 import { authFetch, formatDate } from '../utils/api';
 
-export default function ProjectDetail({ project, onBack, onSelectChat }) {
+export default function ProjectDetail({ project, onBack, onSelectChat, onNewChatInProject, refreshKey }) {
   const [chats, setChats]     = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { loadChats(); }, [project.id]);
+  useEffect(() => { loadChats(); }, [project.id, refreshKey]);
 
   async function loadChats() {
     setLoading(true);
@@ -22,22 +22,32 @@ export default function ProjectDetail({ project, onBack, onSelectChat }) {
     <div className="flex-1 flex flex-col overflow-hidden bg-bg">
 
       {/* Header */}
-      <div className="flex items-center gap-4 px-8 py-6 border-b border-b1 flex-shrink-0">
-        <button onClick={onBack}
-          className="text-t3 hover:text-t1 transition-colors flex items-center gap-1.5 text-sm">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M19 12H5M12 5l-7 7 7 7"/>
-          </svg>
-          Projects
-        </button>
-        <div className="w-px h-4 bg-b2" />
-        <div className="flex items-center gap-2">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               strokeWidth="1.5" className="text-accent">
-            <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-          </svg>
-          <h1 className="font-serif text-2xl font-light text-t1">{project.name}</h1>
+      <div className="flex items-center justify-between px-8 py-6 border-b border-b1 flex-shrink-0">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack}
+            className="text-t3 hover:text-t1 transition-colors flex items-center gap-1.5 text-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M19 12H5M12 5l-7 7 7 7"/>
+            </svg>
+            Projects
+          </button>
+          <div className="w-px h-4 bg-b2" />
+          <div className="flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="1.5" className="text-accent">
+              <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+            </svg>
+            <h1 className="font-serif text-2xl font-light text-t1">{project.name}</h1>
+          </div>
         </div>
+        {/* New chat inside project */}
+        <button onClick={() => onNewChatInProject(project)}
+          className="flex items-center gap-2 px-4 py-2 bg-bg3 border border-b2 rounded-xl text-t1 text-sm hover:border-accent hover:text-accent transition-all">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 5v14M5 12h14"/>
+          </svg>
+          New chat
+        </button>
       </div>
 
       {/* Chats list */}
