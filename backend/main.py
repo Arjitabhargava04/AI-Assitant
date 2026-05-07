@@ -207,3 +207,18 @@ async def health():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
+
+class UpdateMessageRequest(BaseModel):
+    content: str
+
+@app.patch("/messages/{message_id}")
+async def update_message(
+    message_id: str,
+    req: UpdateMessageRequest,
+    user: dict = Depends(require_auth),
+):
+    """Update message content — for edit and regenerate."""
+    from db.queries import update_message_content
+    update_message_content(message_id, req.content)
+    return {"ok": True}

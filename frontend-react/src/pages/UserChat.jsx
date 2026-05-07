@@ -147,10 +147,91 @@ export default function UserChat() {
       }]);
     } finally { setTyping(false); }
   }
+  async function handleRegenerate() {
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+    const lastAiMsg   = [...messages].reverse().find(m => m.role === 'assistant');
+    if (!lastUserMsg || typing) return;
+
+    setMessages(prev => prev.filter(m => m.id !== lastAiMsg?.id));
+    setTyping(true);
+
+    try {
+      const fd = new FormData();
+      fd.append('text', lastUserMsg.content);
+      fd.append('tone', lastUserMsg.tone || 'normal');
+      fd.append('chat_id', currentChatId || '');
+      const res  = await authFetch('/query', { method: 'POST', body: fd });
+      const data = await res.json();
+
+      const newAnswer = data.answer || 'No response.';
+
+      if (lastAiMsg?.id && currentChatId) {
+        await authFetch(`/messages/${lastAiMsg.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: newAnswer }),
+        });
+      }
+
+      setMessages(prev => [...prev, {
+        id:      lastAiMsg?.id || Date.now() + '_a',
+        role:    'assistant',
+        content: newAnswer,
+        tone:    lastUserMsg.tone || 'normal',
+        images:  data.images || [],
+      }]);
+    } catch {
+      setMessages(prev => [...prev, {
+        id: Date.now() + '_err', role: 'assistant',
+        content: 'Could not regenerate.', tone: 'normal', images: [],
+      }]);
+    } finally { setTyping(false); }
+  }
+
+  async function handleEditSave(messageId, newText) {
+    setMessages(prev => prev.map(m =>
+      m.id === messageId ? { ...m, content: newText } : m
+    ));
+    const lastAiMsg = [...messages].reverse().find(m => m.role === 'assistant');
+    if (lastAiMsg) {
+      setMessages(prev => prev.filter(m => m.id !== lastAiMsg.id));
+    }
+    setTyping(true);
+    try {
+      const fd = new FormData();
+      fd.append('text', newText);
+      fd.append('tone', 'normal');
+      fd.append('chat_id', currentChatId || '');
+      const res  = await authFetch('/query', { method: 'POST', body: fd });
+      const data = await res.json();
+      const newAnswer = data.answer || 'No response.';
+
+      if (lastAiMsg?.id) {
+        await authFetch(`/messages/${lastAiMsg.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: newAnswer }),
+        });
+      }
+
+      setMessages(prev => [...prev, {
+        id: lastAiMsg?.id || Date.now() + '_a',
+        role: 'assistant', content: newAnswer,
+        tone: 'normal', images: data.images || [],
+      }]);
+    } catch {
+      setMessages(prev => [...prev, {
+        id: Date.now() + '_err', role: 'assistant',
+        content: 'Could not regenerate.', tone: 'normal', images: [],
+      }]);
+    } finally { setTyping(false); }
+  }
 
   function useSuggestion(text) {
     handleSend({ text, tone: 'normal', files: { image: null, audio: null, video: null }, prevUrls: {} });
   }
+
+  
 
   // ── Render ────────────────────────────────────────────────
   return (
@@ -200,13 +281,28 @@ export default function UserChat() {
                   
                 </div>
               ) : (
-                messages.map(m => m.role === 'user' ? (
+                messages.map((m, index) => {
+                const lastUserIndex = messages.map(x => x.role).lastIndexOf('user');
+                const lastAiIndex   = messages.map(x => x.role).lastIndexOf('assistant');
+                const isLast = m.role === 'user'
+                  ? index === lastUserIndex
+                  : index === lastAiIndex;
+                return m.role === 'user' ? (
                   <UserBubble key={m.id} content={m.content}
-                    imageUrl={m.imageUrl} audioName={m.audioName} videoName={m.videoName} />
+                    imageUrl={m.imageUrl} audioName={m.audioName} videoName={m.videoName}
+                    messageId={m.id}
+                    isLast={isLast}
+                    onEditSave={(newText) => handleEditSave(m.id, newText)}
+                  />
                 ) : (
                   <AIBubble key={m.id} content={m.content}
-                    tone={m.tone} images={m.images} />
-                ))
+                    tone={m.tone} images={m.images}
+                    messageId={m.id}
+                    isLast={isLast}
+                    onRegenerate={handleRegenerate}
+                  />
+                );
+              })
               )}
               {typing && <TypingIndicator />}
               <div ref={msgsEndRef} />

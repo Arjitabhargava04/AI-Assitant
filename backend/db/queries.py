@@ -478,3 +478,14 @@ def hard_delete_correction(correction_id: str) -> None:
             )
         conn.commit()
     log("DB", f"Correction deleted: {correction_id}", "warn")        
+
+def update_message_content(message_id: str, content: str) -> None:
+    """Update message content — used for edit and regenerate."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE messages SET content = %s WHERE id = %s",
+                (content, message_id)
+            )
+        conn.commit()
+    log("DB", f"Message updated: {message_id}", "success")    

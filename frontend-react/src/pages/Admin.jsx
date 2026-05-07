@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+const audioCache = new Map();
 import { authFetch, renderMarkdown } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import InputArea from '../components/InputArea';
@@ -100,6 +101,63 @@ export default function Admin() {
     } finally { setTyping(false); }
   }
 
+  async function handleRegenerate() {
+    const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+    const lastAiMsg   = [...messages].reverse().find(m => m.role === 'assistant');
+    if (!lastUserMsg || typing) return;
+    setMessages(prev => prev.filter(m => m.id !== lastAiMsg?.id));
+    setTyping(true);
+    try {
+      const fd = new FormData();
+      fd.append('text', lastUserMsg.content);
+      fd.append('tone', 'normal');
+      fd.append('chat_id', currentSession?.id || '');
+      const res  = await authFetch('/query', { method: 'POST', body: fd });
+      const data = await res.json();
+      const newAnswer = data.answer || 'No response.';
+      if (lastAiMsg?.id && currentSession?.id) {
+        await authFetch(`/messages/${lastAiMsg.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: newAnswer }),
+        });
+      }
+      setMessages(prev => [...prev, {
+        id: lastAiMsg?.id || Date.now()+'_a', role: 'assistant',
+        content: newAnswer, fresh: true,
+      }]);
+    } catch {
+      setMessages(prev => [...prev, { id: Date.now()+'_e', role: 'assistant', content: 'Error.', fresh: false }]);
+    } finally { setTyping(false); }
+  }
+
+  async function handleEditSave(messageId, newText) {
+    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, content: newText } : m));
+    const lastAiMsg = [...messages].reverse().find(m => m.role === 'assistant');
+    if (lastAiMsg) setMessages(prev => prev.filter(m => m.id !== lastAiMsg.id));
+    setTyping(true);
+    try {
+      const fd = new FormData();
+      fd.append('text', newText);
+      fd.append('tone', 'normal');
+      fd.append('chat_id', currentSession?.id || '');
+      const res  = await authFetch('/query', { method: 'POST', body: fd });
+      const data = await res.json();
+      const newAnswer = data.answer || 'No response.';
+      if (lastAiMsg?.id) {
+        await authFetch(`/messages/${lastAiMsg.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: newAnswer }),
+        });
+      }
+      setMessages(prev => [...prev, {
+        id: lastAiMsg?.id || Date.now()+'_a', role: 'assistant',
+        content: newAnswer, fresh: true,
+      }]);
+    } catch {
+      setMessages(prev => [...prev, { id: Date.now()+'_e', role: 'assistant', content: 'Error.', fresh: false }]);
+    } finally { setTyping(false); }
+  }
+
   async function saveCorrection(geminiSummary, correctAnswer, questionText) {
     await authFetch('/corrections', {
       method: 'POST',
@@ -189,7 +247,7 @@ export default function Admin() {
         </div>
 
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          {view === 'tuning'       && <TuningView messages={messages} typing={typing} msgsEndRef={msgsEndRef} onSend={handleSend} onSaveCorrection={saveCorrection} isSuper={isSuper} />}
+          {view === 'tuning' && <TuningView messages={messages} typing={typing} msgsEndRef={msgsEndRef} onSend={handleSend} onSaveCorrection={saveCorrection} isSuper={isSuper} onRegenerate={handleRegenerate} onEditSave={handleEditSave} />}
           {view === 'fixes'        && <FixesView isSuper={isSuper} userId={user?.userId} />}
           {view === 'small-admins' && isSuper && <SmallAdminsView />}
           {view === 'users'        && isSuper && <UsersView />}
@@ -202,7 +260,7 @@ export default function Admin() {
 
 // ── TUNING VIEW ───────────────────────────────────────────
 
-function TuningView({ messages, typing, msgsEndRef, onSend, onSaveCorrection, isSuper }) {
+function TuningView({ messages, typing, msgsEndRef, onSend, onSaveCorrection, isSuper, onRegenerate, onEditSave }) {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -213,10 +271,16 @@ function TuningView({ messages, typing, msgsEndRef, onSend, onSaveCorrection, is
             <div style={{ color: '#444', fontSize: 11, marginTop: 6, maxWidth: 280 }}>Ask questions to test the system. Press Yes if correct, No to submit a correction.</div>
           </div>
         )}
-        {messages.map(m => m.role === 'user'
-          ? <UserMsg key={m.id} content={m.content} />
-          : <AIMsg key={m.id} content={m.content} geminiSummary={m.geminiSummary} questionText={m.questionText} onSaveCorrection={onSaveCorrection} isSuper={isSuper} fresh={m.fresh} />
-        )}
+        {messages.map((m, index) => {
+          const lastUserIndex = messages.map(x => x.role).lastIndexOf('user');
+          const lastAiIndex   = messages.map(x => x.role).lastIndexOf('assistant');
+          const isLast = m.role === 'user'
+            ? index === lastUserIndex
+            : index === lastAiIndex;
+          return m.role === 'user'
+            ? <UserMsg key={m.id} content={m.content} messageId={m.id} isLast={isLast} onEditSave={(newText) => onEditSave && onEditSave(m.id, newText)} />
+            : <AIMsg key={m.id} content={m.content} geminiSummary={m.geminiSummary} questionText={m.questionText} onSaveCorrection={onSaveCorrection} isSuper={isSuper} fresh={m.fresh} messageId={m.id} isLast={isLast} onRegenerate={onRegenerate} />;
+        })}
         {typing && <TypingDots />}
         <div ref={msgsEndRef} />
       </div>
@@ -227,54 +291,178 @@ function TuningView({ messages, typing, msgsEndRef, onSend, onSaveCorrection, is
   );
 }
 
-function UserMsg({ content }) {
+function UserMsg({ content, messageId, isLast, onEditSave }) {
+  const [editing, setEditing]   = useState(false);
+  const [editText, setEditText] = useState(content);
+  const [copied, setCopied]     = useState(false);
+  const [hover, setHover]       = useState(false);
+
+  function copyText() {
+    navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function saveEdit() {
+    if (!editText.trim()) return;
+    if (messageId) {
+      await authFetch(`/messages/${messageId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: editText }),
+      });
+    }
+    setEditing(false);
+    onEditSave && onEditSave(editText);
+  }
+
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-      <div style={{ maxWidth: '75%', background: '#1a1a1a', borderRadius: '12px 12px 2px 12px', padding: '10px 14px', fontSize: 12, color: '#E8E2D9', lineHeight: 1.6 }}>{content}</div>
+    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}>
+      <div style={{ maxWidth: '75%' }}>
+        {editing ? (
+          <div style={{ background: '#1a1a1a', borderRadius: 12, padding: 12 }}>
+            <textarea value={editText} onChange={e => setEditText(e.target.value)}
+              style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: '#E8E2D9', fontSize: 12, resize: 'none', minHeight: 60, lineHeight: 1.6 }} />
+            <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', marginTop: 8 }}>
+              <button onClick={() => setEditing(false)}
+                style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, border: '0.5px solid #333', background: 'none', color: '#666', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={saveEdit}
+                style={{ fontSize: 11, padding: '4px 10px', borderRadius: 6, background: '#C4934A', border: 'none', color: '#000', fontWeight: 500, cursor: 'pointer' }}>
+                Save
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ background: '#1a1a1a', borderRadius: '12px 12px 2px 12px', padding: '10px 14px', fontSize: 12, color: '#E8E2D9', lineHeight: 1.6 }}>
+            {content}
+          </div>
+        )}
+
+        {!editing && (
+          <div style={{ display: 'flex', gap: 4, marginTop: 6, justifyContent: 'flex-end', opacity: hover ? 1 : 0, transition: 'opacity 0.15s' }}>
+            <AdminActionBtn onClick={copyText} active={copied} activeColor="#4a9a6a" title="Copy">
+              <CopyIconSvg />
+            </AdminActionBtn>
+            {isLast && (
+              <AdminActionBtn onClick={() => setEditing(true)} title="Edit">
+                <EditIconSvg />
+              </AdminActionBtn>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function AIMsg({ content, geminiSummary, questionText, onSaveCorrection, isSuper, fresh }) {
-  const [corrOpen, setCorrOpen]         = useState(false);
-  const [corrText, setCorrText]         = useState('');
-  const [saved, setSaved]               = useState(false);
+function AIMsg({ content, geminiSummary, questionText, onSaveCorrection, isSuper, fresh, messageId, isLast, onRegenerate }) {
+  const [corrOpen, setCorrOpen]           = useState(false);
+  const [corrText, setCorrText]           = useState('');
+  const [saved, setSaved]                 = useState(false);
   const [markedCorrect, setMarkedCorrect] = useState(false);
+  const [liked, setLiked]                 = useState(false);
+  const [disliked, setDisliked]           = useState(false);
+  const [copied, setCopied]               = useState(false);
+  const [speakState, setSpeakState]       = useState('idle');
+  const [hover, setHover]                 = useState(false);
+  const audioRef = useRef(null);
+
+  function copyText() {
+    navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  function handleLike() { setLiked(l => !l); setDisliked(false); }
+  function handleDislike() { setDisliked(d => !d); setLiked(false); }
+
+  async function handleSpeak() {
+    if (speakState === 'playing') {
+      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
+      setSpeakState('idle'); return;
+    }
+    if (speakState === 'loading') return;
+
+    const cacheKey = content.substring(0, 200);
+
+    if (audioCache.has(cacheKey)) {
+      const cachedB64 = audioCache.get(cacheKey);
+      const audio = new Audio('data:audio/wav;base64,' + cachedB64);
+      audioRef.current = audio;
+      setSpeakState('playing');
+      audio.play();
+      audio.onended = () => { setSpeakState('idle'); audioRef.current = null; };
+      return;
+    }
+
+    setSpeakState('loading');
+    try {
+      const res  = await authFetch('/speak', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: content, voice: 'Aoede' }),
+      });
+      const data = await res.json();
+      if (data.audio_b64) {
+        audioCache.set(cacheKey, data.audio_b64);
+        const audio = new Audio('data:audio/wav;base64,' + data.audio_b64);
+        audioRef.current = audio;
+        setSpeakState('playing');
+        audio.play();
+        audio.onended = () => { setSpeakState('idle'); audioRef.current = null; };
+      } else throw new Error('No audio');
+    } catch { setSpeakState('idle'); }
+  
+  }
 
   async function handleSave() {
     if (!corrText.trim()) return;
     await onSaveCorrection(geminiSummary || content, corrText, questionText || '');
-    setSaved(true);
-    setCorrOpen(false);
+    setSaved(true); setCorrOpen(false);
   }
 
   return (
-    <div style={{ display: 'flex', gap: 8 }}>
+    <div style={{ display: 'flex', gap: 8 }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}>
       <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#C4934A,#8B6A35)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 12, fontFamily: 'serif', flexShrink: 0, marginTop: 2 }}>V</div>
       <div style={{ flex: 1 }}>
         <div style={{ background: '#111', border: '0.5px solid #222', borderRadius: '12px 12px 12px 2px', padding: '10px 14px', fontSize: 12, color: '#E8E2D9', lineHeight: 1.6 }}
           dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
-        
+
+        {/* Action buttons */}
+        <div style={{ display: 'flex', gap: 4, marginTop: 6, opacity: hover ? 1 : 0, transition: 'opacity 0.15s' }}>
+          <AdminActionBtn onClick={copyText} active={copied} activeColor="#4a9a6a" title="Copy"><CopyIconSvg /></AdminActionBtn>
+          <AdminActionBtn onClick={handleLike} active={liked} activeColor="#4a9a6a" title="Like"><LikeIconSvg /></AdminActionBtn>
+          <AdminActionBtn onClick={handleDislike} active={disliked} activeColor="#ff4a4a" title="Dislike"><DislikeIconSvg /></AdminActionBtn>
+          {speakState === 'loading' ? (
+            <div style={{ width: 26, height: 26, borderRadius: 6, border: '0.5px solid #C4934A44', background: '#C4934A11', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 3 }}>
+              <div className="dot" style={{ width: 4, height: 4, borderRadius: '50%', background: '#C4934A' }} />
+              <div className="dot" style={{ width: 4, height: 4, borderRadius: '50%', background: '#C4934A', animationDelay: '0.2s' }} />
+              <div className="dot" style={{ width: 4, height: 4, borderRadius: '50%', background: '#C4934A', animationDelay: '0.4s' }} />
+            </div>
+          ) : (
+            <AdminActionBtn onClick={handleSpeak} active={speakState === 'playing'} activeColor="#C4934A" title="Read aloud">
+              <SpeakIconSvg />
+            </AdminActionBtn>
+          )}
+          {isLast && <AdminActionBtn onClick={onRegenerate} title="Regenerate"><RegenerateIconSvg /></AdminActionBtn>}
+        </div>
+
+        {/* Correct/Wrong tuning buttons */}
         {fresh && !saved && !markedCorrect && (
-          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+          <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
             <button onClick={() => { setMarkedCorrect(true); setCorrOpen(false); setCorrText(''); }}
-              style={{ fontSize: 10, padding: '3px 10px', borderRadius: 6, border: '0.5px solid #4a9a6a44', background: '#0a1a0a', color: '#4a9a6a', cursor: 'pointer' }}>
-              ✓ Correct
-            </button>
+              style={{ fontSize: 10, padding: '3px 10px', borderRadius: 6, border: '0.5px solid #4a9a6a44', background: '#0a1a0a', color: '#4a9a6a', cursor: 'pointer' }}>✓ Correct</button>
             <button onClick={() => setCorrOpen(o => !o)}
-              style={{ fontSize: 10, padding: '3px 10px', borderRadius: 6, border: '0.5px solid #ff4a4a44', background: '#1a0a0a', color: '#ff4a4a', cursor: 'pointer' }}>
-              ✗ Wrong
-            </button>
+              style={{ fontSize: 10, padding: '3px 10px', borderRadius: 6, border: '0.5px solid #ff4a4a44', background: '#1a0a0a', color: '#ff4a4a', cursor: 'pointer' }}>✗ Wrong</button>
           </div>
         )}
-        {fresh && markedCorrect && (
-          <div style={{ fontSize: 10, color: '#4a9a6a', marginTop: 4 }}>✓ Answer is correct</div>
-        )}
-        {fresh && saved && !corrOpen && (
-          <div style={{ fontSize: 10, color: '#C4934A', marginTop: 4 }}>
-            ✓ {isSuper ? 'Correction saved and live' : 'Correction submitted for approval'}
-          </div>
-        )}
+        {fresh && markedCorrect && <div style={{ fontSize: 10, color: '#4a9a6a', marginTop: 4 }}>✓ Answer is correct</div>}
+        {fresh && saved && !corrOpen && <div style={{ fontSize: 10, color: '#C4934A', marginTop: 4 }}>✓ {isSuper ? 'Correction saved and live' : 'Correction submitted for approval'}</div>}
 
         {fresh && corrOpen && !saved && (
           <div style={{ marginTop: 8, padding: 12, background: '#0D0D0D', border: '0.5px solid #C4934A44', borderRadius: 10 }}>
@@ -283,7 +471,8 @@ function AIMsg({ content, geminiSummary, questionText, onSaveCorrection, isSuper
               placeholder="Write the correct version..."
               style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: '#E8E2D9', fontSize: 11, resize: 'none', minHeight: 70, lineHeight: 1.6 }} />
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
-              <button onClick={handleSave} style={{ fontSize: 11, padding: '5px 14px', borderRadius: 7, background: '#C4934A', border: 'none', color: '#000', cursor: 'pointer', fontWeight: 500 }}>
+              <button onClick={handleSave}
+                style={{ fontSize: 11, padding: '5px 14px', borderRadius: 7, background: '#C4934A', border: 'none', color: '#000', cursor: 'pointer', fontWeight: 500 }}>
                 {isSuper ? 'Save & go live' : 'Submit for approval'}
               </button>
             </div>
@@ -291,6 +480,33 @@ function AIMsg({ content, geminiSummary, questionText, onSaveCorrection, isSuper
         )}
       </div>
     </div>
+  );
+}
+
+function CopyIconSvg() {
+  return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>;
+}
+function LikeIconSvg() {
+  return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/></svg>;
+}
+function DislikeIconSvg() {
+  return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10z"/><path d="M17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17"/></svg>;
+}
+function SpeakIconSvg() {
+  return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/></svg>;
+}
+function RegenerateIconSvg() {
+  return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M1 4v6h6"/><path d="M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 013.51 15"/></svg>;
+}
+function EditIconSvg() {
+  return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
+}
+function AdminActionBtn({ onClick, active, activeColor, title, children }) {
+  return (
+    <button onClick={onClick} title={title}
+      style={{ width: 26, height: 26, borderRadius: 6, border: `0.5px solid ${active ? activeColor + '44' : '#2a2a2a'}`, background: active ? activeColor + '11' : 'none', color: active ? activeColor : '#555', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.15s' }}>
+      {children}
+    </button>
   );
 }
 
