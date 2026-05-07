@@ -15,7 +15,7 @@ export function AuthProvider({ children }) {
     authFetch('/auth/me')
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data) setUser({ ...stored, isAdmin: data.is_admin });
+        if (data) setUser({ ...stored, isAdmin: data.is_admin, isSuper: data.is_super, role: data.role });
         else      { clearUser(); }
       })
       .catch(() => clearUser())

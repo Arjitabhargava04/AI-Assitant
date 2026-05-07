@@ -11,7 +11,7 @@ Flow:
 """
 
 import anthropic
-from db.queries import get_all_corrections
+from db.queries import get_approved_corrections
 from config.settings import ANTHROPIC_API_KEY, CLAUDE_MODEL
 from utils.debug import log, log_separator, timer
 
@@ -40,7 +40,7 @@ async def find_relevant_correction(
     """
     import asyncio
 
-    corrections = get_all_corrections()
+    corrections = get_approved_corrections()
 
     if not corrections:
         log("INJECT", "No corrections in database — skipping", "info")

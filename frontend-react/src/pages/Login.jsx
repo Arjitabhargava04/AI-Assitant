@@ -32,8 +32,8 @@ export default function Login() {
       if (!res.ok) { setError(data.detail || 'Something went wrong.'); return; }
 
       saveUser(data);
-      setUser({ token: data.token, email: data.email, name: data.display_name, isAdmin: data.is_admin });
-      navigate(data.is_admin ? '/admin' : '/chat', { replace: true });
+setUser({ token: data.token, email: data.email, name: data.display_name, isAdmin: data.is_admin, isSuper: data.is_super, role: data.role });
+navigate(data.is_admin ? '/admin' : '/chat', { replace: true });
     } catch {
       setError('Cannot connect to server. Make sure backend is running.');
     } finally {

@@ -58,7 +58,7 @@ def get_all_users() -> list:
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, email, display_name, created_at FROM users ORDER BY created_at DESC"
+                "SELECT id, email, display_name, created_at, role FROM users ORDER BY created_at DESC"
             )
             return cur.fetchall()
 
@@ -279,3 +279,202 @@ def get_project_chats(project_id: str, user_id: str) -> list:
                 (project_id, user_id)
             )
             return cur.fetchall()   
+
+
+# ── ROLES ─────────────────────────────────────────────────
+
+def set_user_role(user_id: str, role: str) -> None:
+    """Set role for a user — user | small_admin | super_admin"""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE users SET role = %s WHERE id = %s",
+                (role, user_id)
+            )
+        conn.commit()
+    log("DB", f"Role set: {user_id} → {role}", "success")
+
+
+def get_user_role(user_id: str) -> str:
+    """Get role of a user."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT role FROM users WHERE id = %s",
+                (user_id,)
+            )
+            row = cur.fetchone()
+            return row["role"] if row else "user"
+
+
+def get_all_small_admins() -> list:
+    """Get all small admins — super admin only."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT id, email, display_name, created_at, role
+                   FROM users WHERE role = 'small_admin'
+                   ORDER BY created_at DESC"""
+            )
+            return cur.fetchall()
+
+
+def get_all_super_admins() -> list:
+    """Get all super admins."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT id, email, display_name, created_at
+                   FROM users WHERE role = 'super_admin'
+                   ORDER BY created_at DESC"""
+            )
+            return cur.fetchall()
+
+
+# ── CORRECTIONS (updated) ─────────────────────────────────
+
+def save_correction_v2(
+    gemini_summary: str,
+    correct_answer: str,
+    question_text:  str,
+    submitted_by:   str,
+    status:         str = "pending",
+    input_type:     str = "text",
+) -> dict:
+    """Save a correction with question_text, submitter and status."""
+    cid = _new_id()
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO corrections
+                   (id, gemini_summary, correct_answer, question_text,
+                    submitted_by, status, input_type)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                (cid, gemini_summary, correct_answer, question_text,
+                 submitted_by, status, input_type)
+            )
+        conn.commit()
+    log("DB", f"Correction saved: {cid} | status={status}", "success")
+    return {
+        "id": cid,
+        "gemini_summary": gemini_summary,
+        "correct_answer": correct_answer,
+        "question_text":  question_text,
+        "submitted_by":   submitted_by,
+        "status":         status,
+    }
+
+
+def get_approved_corrections() -> list:
+    """Get only APPROVED corrections — used by pipeline."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT id, gemini_summary, correct_answer,
+                          question_text, input_type, created_at
+                   FROM corrections
+                   WHERE is_active = TRUE AND status = 'approved'
+                   ORDER BY created_at DESC"""
+            )
+            return cur.fetchall()
+
+
+def get_corrections_for_super_admin(submitted_by: str = None) -> list:
+    """Get all corrections — optionally filter by submitter."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            if submitted_by:
+                cur.execute(
+                    """SELECT c.*, u.display_name as submitter_name, u.email as submitter_email
+                       FROM corrections c
+                       LEFT JOIN users u ON c.submitted_by = u.id
+                       WHERE c.is_active = TRUE AND c.submitted_by = %s
+                       ORDER BY c.created_at DESC""",
+                    (submitted_by,)
+                )
+            else:
+                cur.execute(
+                    """SELECT c.*, u.display_name as submitter_name, u.email as submitter_email
+                       FROM corrections c
+                       LEFT JOIN users u ON c.submitted_by = u.id
+                       WHERE c.is_active = TRUE
+                       ORDER BY c.created_at DESC"""
+                )
+            return cur.fetchall()
+
+
+def get_corrections_by_user(user_id: str) -> list:
+    """Get corrections submitted by a specific small admin."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT * FROM corrections
+                   WHERE submitted_by = %s AND is_active = TRUE
+                   ORDER BY created_at DESC""",
+                (user_id,)
+            )
+            return cur.fetchall()
+
+
+def approve_correction(correction_id: str) -> None:
+    """Approve a correction — makes it live in AI."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE corrections SET status = 'approved' WHERE id = %s",
+                (correction_id,)
+            )
+        conn.commit()
+    log("DB", f"Correction approved: {correction_id}", "success")
+
+
+def update_correction(correction_id: str, correct_answer: str, status: str = "pending") -> None:
+    """Update correction text — resets to pending."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE corrections
+                   SET correct_answer = %s, status = %s
+                   WHERE id = %s""",
+                (correct_answer, status, correction_id)
+            )
+        conn.commit()
+    log("DB", f"Correction updated: {correction_id} → {status}", "success")
+
+
+def get_tuning_sessions_by_user(user_id: str) -> list:
+    """Get all chats created by a specific user in admin tuning."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT id, title, created_at, updated_at
+                   FROM chats WHERE user_id = %s
+                   ORDER BY updated_at DESC""",
+                (user_id,)
+            )
+            return cur.fetchall()
+        
+
+
+def update_correction_status(correction_id: str, status: str) -> None:
+    """Update correction status — pending or approved."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE corrections SET status = %s WHERE id = %s",
+                (status, correction_id)
+            )
+        conn.commit()
+    log("DB", f"Correction status updated: {correction_id} → {status}", "success")
+
+
+def hard_delete_correction(correction_id: str) -> None:
+    """Permanently delete a correction from database."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM corrections WHERE id = %s",
+                (correction_id,)
+            )
+        conn.commit()
+    log("DB", f"Correction deleted: {correction_id}", "warn")        

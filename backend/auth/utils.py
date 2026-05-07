@@ -29,24 +29,17 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 # ── JWT ───────────────────────────────────────────────────
 
-def create_token(user_id: str, email: str) -> str:
-    """
-    Create a JWT token for a user.
-    Expires after JWT_EXPIRE_HOURS (default 8760 = 1 year).
-    Token contains user_id, email, is_admin flag.
-    """
-    is_admin = email.lower().strip() == ADMIN_EMAIL.lower().strip()
-    expire   = datetime.now(timezone.utc) + timedelta(hours=int(JWT_EXPIRE_HOURS))
-
+def create_token(user_id: str, email: str, role: str = "user") -> str:
+    """Create JWT token with role included."""
+    expire = datetime.now(timezone.utc) + timedelta(hours=int(JWT_EXPIRE_HOURS))
     payload = {
-        "user_id":  user_id,
-        "email":    email,
-        "is_admin": is_admin,
-        "exp":      expire,
+        "user_id": user_id,
+        "email":   email,
+        "role":    role,
+        "exp":     expire,
     }
-
     token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
-    log("AUTH", f"Token created for {email} | admin={is_admin} | expires={expire.date()}", "success")
+    log("AUTH", f"Token created for {email} | role={role} | expires={expire.date()}", "success")
     return token
 
 

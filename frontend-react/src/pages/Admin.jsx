@@ -1,337 +1,853 @@
-// src/pages/Admin.jsx
 import { useState, useEffect, useRef } from 'react';
-import { authFetch } from '../utils/api';
-import Sidebar from '../components/Sidebar';
+import { authFetch, renderMarkdown } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 import InputArea from '../components/InputArea';
-import { UserBubble, AIBubble, TypingIndicator } from '../components/MessageBubble';
-
-const TABS = ['Tuning', 'Users', 'Fixes'];
 
 export default function Admin() {
-  const [chats, setChats]               = useState([]);
-  const [allChats, setAllChats]         = useState([]);
-  const [corrections, setCorrections]   = useState([]);
-  const [currentChatId, setCurrentChatId] = useState(null);
-  const [messages, setMessages]         = useState([]);
-  const [typing, setTyping]             = useState(false);
-  const [sideTab, setSideTab]           = useState('Tuning');
+  const { user, logout } = useAuth();
+  const isSuper = user?.isSuper;
+  const [view, setView]       = useState('tuning');
+  const [sessions, setSessions] = useState([]);
+  const [currentSession, setCurrentSession] = useState(null);
+  const [messages, setMessages]   = useState([]);
+  const [typing, setTyping]       = useState(false);
   const msgsEndRef = useRef(null);
 
-  useEffect(() => { loadAll(); }, []);
+  useEffect(() => { loadSessions(); }, []);
   useEffect(() => { msgsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, typing]);
 
-  async function loadAll() {
-    await Promise.all([loadChats(), loadAllChats(), loadCorrections()]);
+  async function loadSessions() {
+    const res  = await authFetch('/chats');
+    const data = await res.json();
+    setSessions(data.chats || []);
   }
 
-  async function loadChats() {
-    try {
-      const res  = await authFetch('/chats');
-      const data = await res.json();
-      setChats(data.chats || []);
-    } catch(e) { console.error(e); }
-  }
-
-  async function loadAllChats() {
-    try {
-      const res  = await authFetch('/chats/all');
-      const data = await res.json();
-      setAllChats(data.chats || []);
-    } catch(e) { console.error(e); }
-  }
-
-  async function loadCorrections() {
-    try {
-      const res  = await authFetch('/corrections');
-      const data = await res.json();
-      setCorrections(data.corrections || []);
-    } catch(e) { console.error(e); }
-  }
-
-  async function deactivate(id) {
-    if (!confirm('Deactivate this correction?')) return;
-    try {
-      await authFetch(`/corrections/${id}/deactivate`, { method: 'PATCH' });
-      setCorrections(prev => prev.filter(c => c.id !== id));
-    } catch(e) { alert('Failed.'); }
-  }
-
-  async function selectChat(chatId, title) {
-    setCurrentChatId(chatId);
-    try {
-      const res  = await authFetch(`/chats/${chatId}/messages`);
-      const data = await res.json();
-      const sorted = (data.messages || []).sort((a, b) => {
-  const timeDiff = new Date(a.created_at) - new Date(b.created_at);
-  if (timeDiff !== 0) return timeDiff;
-  if (a.role === 'user' && b.role === 'assistant') return -1;
-  if (a.role === 'assistant' && b.role === 'user') return 1;
-  return 0;
-});
-      setMessages(sorted.map(m => ({
-        id:             m.id,
-        role:           m.role,
-        content:        m.content,
-        geminiSummary:  m.gemini_summary || '',
-        tone:           'normal',
-        showCorrection: false,
-      })));
-    } catch(e) { console.error(e); }
-  }
-
-  function newChat() {
-    setCurrentChatId(null);
+  async function newSession() {
+    setView('tuning');
+    setCurrentSession(null);
     setMessages([]);
   }
 
-  async function ensureChatId(firstMsg) {
-    if (currentChatId) return currentChatId;
-    try {
-      const res  = await authFetch('/chats', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ title: (firstMsg || 'Tuning session').substring(0, 60) }),
-      });
-      const data = await res.json();
-      setCurrentChatId(data.id);
-      await loadChats();
-      return data.id;
-    } catch(e) { console.error(e); return ''; }
+  async function selectSession(id, title) {
+    setView('tuning');
+    setCurrentSession({ id, title });
+    const res  = await authFetch(`/chats/${id}/messages`);
+    const data = await res.json();
+    const sorted = (data.messages || []).sort((a, b) => {
+      const timeDiff = new Date(a.created_at) - new Date(b.created_at);
+      if (timeDiff !== 0) return timeDiff;
+      if (a.role === 'user' && b.role === 'assistant') return -1;
+      if (a.role === 'assistant' && b.role === 'user') return 1;
+      return 0;
+    });
+    setMessages(sorted.map(m => ({
+      id: m.id, role: m.role, content: m.content,
+      geminiSummary: m.gemini_summary || '',
+      fresh: false,
+    })));
   }
 
-  async function handleSend({ text, tone, files, prevUrls }) {
-    if (typing) return;
+  async function ensureSessionId(text) {
+    if (currentSession?.id) return currentSession.id;
+    const res  = await authFetch('/chats', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: text.substring(0, 60) }),
+    });
+    const data = await res.json();
+    setCurrentSession({ id: data.id, title: data.title });
+    await loadSessions();
+    return data.id;
+  }
 
-    const userMsg = {
-      id:        Date.now() + '_u',
-      role:      'user',
-      content:   text,
-      imageUrl:  prevUrls.image || null,
-      audioName: files.audio?.name || null,
-      videoName: files.video?.name || null,
-    };
-    setMessages(prev => [...prev, userMsg]);
+  async function handleSend({ text, tone, files }) {
+    if (typing || !text.trim()) return;
+    setMessages(prev => [...prev, { id: Date.now()+'_u', role: 'user', content: text }]);
     setTyping(true);
-
-    const chatId = await ensureChatId(text);
-
+    const sessionId = await ensureSessionId(text);
     try {
       const fd = new FormData();
-      fd.append('text', text); fd.append('tone', tone); fd.append('chat_id', chatId);
+      fd.append('text', text); fd.append('tone', tone); fd.append('chat_id', sessionId);
       if (files.image) fd.append('image', files.image);
-      if (files.audio) fd.append('audio', files.audio);
-      if (files.video) fd.append('video', files.video);
-
       const res  = await authFetch('/query', { method: 'POST', body: fd });
       const data = await res.json();
-
       setMessages(prev => [...prev, {
-        id:             Date.now() + '_a',
-        role:           'assistant',
-        content:        data.answer || data.error || 'No response.',
-        geminiSummary:  data.gemini_summary || data.answer || '',
+        id: Date.now()+'_a', role: 'assistant',
+        content: data.answer || 'No response.',
+        geminiSummary: data.answer || '',
+        questionText: text,
         tone,
-        images:         data.images || [],
-        showCorrection: true,
+        fresh: true,
       }]);
-    } catch {
-      setMessages(prev => [...prev, {
-        id: Date.now() + '_err', role: 'assistant',
-        content: 'Could not connect to server.',
-        tone: 'normal', images: [], showCorrection: false,
-      }]);
-    } finally {
-      setTyping(false);
-    }
+    } catch { 
+      setMessages(prev => [...prev, { id: Date.now()+'_e', role: 'assistant', content: 'Error connecting.' }]);
+    } finally { setTyping(false); }
   }
 
-  async function saveCorrection(geminiSummary, correctAnswer) {
-    try {
-      await authFetch('/corrections', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ gemini_summary: geminiSummary, correct_answer: correctAnswer, input_type: 'text' }),
-      });
-      await loadCorrections();
-    } catch(e) { alert('Failed to save correction.'); }
+  async function saveCorrection(geminiSummary, correctAnswer, questionText) {
+    await authFetch('/corrections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        gemini_summary: geminiSummary,
+        correct_answer: correctAnswer,
+        question_text:  questionText || '',
+      }),
+    });
   }
 
-  // Sidebar extra panel — admin tabs
-  const extraPanel = (
-    <div className="px-4 pt-3 pb-2 border-b border-b1">
-      <div className="flex border border-b2 rounded-lg overflow-hidden">
-        {TABS.map(t => (
-          <button key={t} onClick={() => setSideTab(t)}
-            className={`flex-1 py-1.5 text-[11px] transition-all ${
-              sideTab === t ? 'bg-ag text-accent' : 'text-t2 hover:text-t1'
-            }`}>
-            {t}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-
-  // Group all chats by user for the Users tab
-  const userGroups = allChats.reduce((acc, c) => {
-    const key = c.email;
-    if (!acc[key]) acc[key] = { name: c.display_name, chats: [] };
-    acc[key].chats.push(c);
-    return acc;
-  }, {});
-
-  const sideContent = sideTab === 'Tuning' ? chats
-    : sideTab === 'Users'  ? []
-    : [];
+  const navItems = isSuper
+    ? [
+        { id: 'tuning',       icon: '⚙️', label: 'Tuning' },
+        { id: 'fixes',        icon: '🔧', label: 'Fixes' },
+        { id: 'small-admins', icon: '🛡️', label: 'Small Admins' },
+        { id: 'users',        icon: '👥', label: 'Users' },
+      ]
+    : [
+        { id: 'tuning', icon: '⚙️', label: 'Tuning' },
+        { id: 'fixes',  icon: '🔧', label: 'Fixes' },
+      ];
 
   return (
-    <div className="h-full flex">
-      <div className="w-64 flex-shrink-0 bg-bg2 border-r border-b1 flex flex-col h-full">
-        {/* Sidebar header */}
-        <div className="p-4 border-b border-b1">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center font-serif text-base font-semibold text-white flex-shrink-0"
-                 style={{ background: 'linear-gradient(135deg,#C4934A,#8B6A35)' }}>
-              V
-            </div>
-            <div>
-              <div className="font-serif text-base font-semibold text-t1">
-                Vikramaditya <span className="text-accent">AI</span>
-              </div>
-              <span className="text-[9px] px-1.5 py-0.5 bg-ag border border-accent2 rounded text-accent uppercase tracking-wider">
-                Admin
-              </span>
-            </div>
+    <div className="h-full flex" style={{ background: '#0D0D0D' }}>
+
+      {/* SIDEBAR */}
+      <div style={{ width: 220, flexShrink: 0, background: '#111', borderRight: '0.5px solid #222', display: 'flex', flexDirection: 'column' }}>
+        
+        {/* Logo */}
+        <div style={{ padding: '14px 12px 10px', borderBottom: '0.5px solid #222' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <div style={{ width: 28, height: 28, borderRadius: 8, background: 'linear-gradient(135deg,#C4934A,#8B6A35)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 13, fontFamily: 'serif', fontWeight: 600 }}>V</div>
+            <span style={{ color: '#E8E2D9', fontSize: 13 }}>Vikramaditya <span style={{ color: '#C4934A' }}>AI</span></span>
           </div>
-          <button onClick={newChat}
-            className="w-full flex items-center gap-2 px-3 py-2 bg-ag border border-accent2 rounded-lg text-accent text-sm hover:bg-accent/20 transition-all">
+          <div style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, display: 'inline-block', background: isSuper ? '#2a1a00' : '#1a1a2a', color: isSuper ? '#C4934A' : '#7a7aff', border: `0.5px solid ${isSuper ? '#C4934A44' : '#7a7aff44'}`, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            {isSuper ? 'Super Admin' : 'Small Admin'}
+          </div>
+          <button onClick={newSession} style={{ width: '100%', padding: '8px 12px', background: '#1a1200', border: '0.5px solid #C4934A44', borderRadius: 8, color: '#C4934A', fontSize: 12, cursor: 'pointer', textAlign: 'left', marginTop: 10 }}>
             + New Tuning Session
           </button>
         </div>
 
-        {/* Admin tabs */}
-        {extraPanel}
+        {/* Nav */}
+        <div style={{ padding: 8 }}>
+          {navItems.map(item => (
+            <div key={item.id} onClick={() => setView(item.id)}
+              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 7, color: view === item.id ? '#C4934A' : '#888', background: view === item.id ? '#1a1200' : 'none', fontSize: 12, cursor: 'pointer', marginBottom: 2 }}>
+              <span>{item.icon}</span> {item.label}
+            </div>
+          ))}
+        </div>
 
-        {/* Tab content */}
-        <div className="flex-1 overflow-y-auto p-2">
-
-          {sideTab === 'Tuning' && (
-            chats.length === 0
-              ? <div className="text-center py-8 text-t3 text-xs">No sessions yet</div>
-              : chats.map(c => (
-                <div key={c.id} onClick={() => selectChat(c.id, c.title)}
-                  className={`px-3 py-2 rounded-lg cursor-pointer transition-colors mb-0.5 ${
-                    c.id === currentChatId ? 'bg-bg4' : 'hover:bg-bg3'
-                  }`}>
-                  <div className="text-sm text-t1 truncate">{c.title || 'Tuning session'}</div>
-                  <div className="text-[10px] text-t3 mt-0.5">{new Date(c.updated_at).toLocaleDateString()}</div>
-                </div>
-              ))
-          )}
-
-          {sideTab === 'Users' && (
-            Object.keys(userGroups).length === 0
-              ? <div className="text-center py-8 text-t3 text-xs">No user chats yet</div>
-              : Object.entries(userGroups).map(([email, u]) => (
-                <div key={email} className="mb-3">
-                  <div className="text-xs text-accent px-2 py-1 font-medium">{u.name || email}</div>
-                  {u.chats.map(c => (
-                    <div key={c.id} onClick={() => selectChat(c.id, c.title)}
-                      className="px-3 py-2 rounded-lg cursor-pointer hover:bg-bg3 transition-colors mb-0.5">
-                      <div className="text-xs text-t1 truncate">{c.title || 'Chat'}</div>
-                      <div className="text-[10px] text-t3">{new Date(c.updated_at).toLocaleDateString()}</div>
-                    </div>
-                  ))}
-                </div>
-              ))
-          )}
-
-          {sideTab === 'Fixes' && (
-            corrections.length === 0
-              ? <div className="text-center py-8 text-t3 text-xs">No corrections saved yet</div>
-              : corrections.map(c => (
-                <div key={c.id} className="mb-2 p-3 bg-bg3 border border-b2 rounded-xl">
-                  <div className="flex justify-between items-start mb-1">
-                    <div className="text-[10px] text-t3">{new Date(c.created_at).toLocaleDateString()}</div>
-                    <button onClick={() => deactivate(c.id)}
-                      className="text-[10px] px-2 py-0.5 border border-b2 rounded text-t3 hover:border-danger hover:text-danger transition-all">
-                      Deactivate
-                    </button>
-                  </div>
-                  <div className="text-xs text-t2 mb-1 leading-relaxed">
-                    {(c.gemini_summary || '').substring(0, 100)}...
-                  </div>
-                  <div className="text-xs text-t1 leading-relaxed">
-                    {(c.correct_answer || '').substring(0, 150)}
-                  </div>
-                </div>
-              ))
-          )}
+        {/* Sessions list */}
+        <div style={{ padding: '4px 8px', flex: 1, overflowY: 'auto' }}>
+          <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '4px 4px 6px' }}>Sessions</div>
+          {sessions.map(s => (
+            <div key={s.id} onClick={() => selectSession(s.id, s.title)}
+              style={{ padding: '7px 10px', borderRadius: 7, color: currentSession?.id === s.id ? '#C4934A' : '#666', background: currentSession?.id === s.id ? '#1a1200' : 'none', fontSize: 11, cursor: 'pointer', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {s.title || 'New session'}
+            </div>
+          ))}
         </div>
 
         {/* Footer */}
-        <AdminFooter />
+        <div style={{ padding: '10px 12px', borderTop: '0.5px solid #222' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#888', flexShrink: 0 }}>👤</div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 11, color: '#E8E2D9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.name || user?.email}</div>
+              <div style={{ fontSize: 10, color: '#555', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user?.email}</div>
+            </div>
+            <button onClick={logout} style={{ fontSize: 10, padding: '3px 7px', border: '0.5px solid #333', borderRadius: 5, color: '#555', background: 'none', cursor: 'pointer' }}>Logout</button>
+          </div>
+        </div>
       </div>
 
-      {/* Main chat */}
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <header className="flex items-center justify-between px-5 h-14 border-b border-b1 bg-bg2 flex-shrink-0">
-          <div className="font-serif text-t2 text-base">Admin Tuning Interface</div>
-        </header>
+      {/* MAIN CONTENT */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        
+        <div style={{ padding: '12px 20px', borderBottom: '0.5px solid #1a1a1a', color: '#888', fontSize: 13, flexShrink: 0 }}>
+          { view === 'tuning' ? 'Admin Tuning Interface'
+          : view === 'fixes' ? 'Fixes'
+          : view === 'small-admins' ? 'Small Admins'
+          : 'Users' }
+        </div>
 
-        <div className="flex-1 flex flex-col overflow-hidden max-w-3xl w-full mx-auto px-4">
-          <div className="flex-1 overflow-y-auto py-5 flex flex-col gap-5">
-            {messages.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center py-10">
-                <div className="font-serif text-7xl font-light italic text-b2 leading-none mb-4">𝑉</div>
-                <div className="font-serif text-xl text-t2 mb-2">Tuning Interface</div>
-                <div className="text-xs text-t3 max-w-sm leading-relaxed">
-                  Ask questions to test the system. Press Yes if the answer is correct, No to correct it. Your corrections apply to all future queries immediately.
-                </div>
-              </div>
-            ) : (
-              messages.map(m => m.role === 'user' ? (
-                <UserBubble key={m.id} content={m.content}
-                  imageUrl={m.imageUrl} audioName={m.audioName} videoName={m.videoName} />
-              ) : (
-                <AIBubble key={m.id} content={m.content}
-                  tone={m.tone} images={m.images}
-                  showCorrection={m.showCorrection}
-                  geminiSummary={m.geminiSummary}
-                  onSaveCorrection={saveCorrection}
-                />
-              ))
-            )}
-            {typing && <TypingIndicator />}
-            <div ref={msgsEndRef} />
-          </div>
-          <InputArea onSend={handleSend} disabled={typing} />
+        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {view === 'tuning'       && <TuningView messages={messages} typing={typing} msgsEndRef={msgsEndRef} onSend={handleSend} onSaveCorrection={saveCorrection} isSuper={isSuper} />}
+          {view === 'fixes'        && <FixesView isSuper={isSuper} userId={user?.userId} />}
+          {view === 'small-admins' && isSuper && <SmallAdminsView />}
+          {view === 'users'        && isSuper && <UsersView />}
         </div>
       </div>
     </div>
   );
 }
 
-function AdminFooter() {
-  function doLogout() {
-    localStorage.clear();
-    window.location.href = '/login';
-  }
+
+// ── TUNING VIEW ───────────────────────────────────────────
+
+function TuningView({ messages, typing, msgsEndRef, onSend, onSaveCorrection, isSuper }) {
   return (
-    <div className="p-3 border-t border-b1">
-      <div className="flex items-center gap-2">
-        <div className="w-7 h-7 rounded-full bg-accent2 border border-accent flex items-center justify-center text-white text-xs flex-shrink-0">
-          A
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-xs text-t1 truncate">Admin</div>
-          <div className="text-[10px] text-t3 truncate">{localStorage.getItem('vk_email') || 'admin'}</div>
-        </div>
-        <button onClick={doLogout}
-          className="text-[10px] px-2 py-1 border border-b2 rounded text-t3 hover:border-danger hover:text-danger transition-all">
-          Logout
-        </button>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {messages.length === 0 && (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 40 }}>
+            <div style={{ fontFamily: 'serif', fontSize: 60, color: '#222', marginBottom: 12 }}>𝑉</div>
+            <div style={{ color: '#666', fontSize: 13 }}>Tuning Interface</div>
+            <div style={{ color: '#444', fontSize: 11, marginTop: 6, maxWidth: 280 }}>Ask questions to test the system. Press Yes if correct, No to submit a correction.</div>
+          </div>
+        )}
+        {messages.map(m => m.role === 'user'
+          ? <UserMsg key={m.id} content={m.content} />
+          : <AIMsg key={m.id} content={m.content} geminiSummary={m.geminiSummary} questionText={m.questionText} onSaveCorrection={onSaveCorrection} isSuper={isSuper} fresh={m.fresh} />
+        )}
+        {typing && <TypingDots />}
+        <div ref={msgsEndRef} />
       </div>
+      <div style={{ padding: '0 16px 12px', flexShrink: 0 }}>
+        <InputArea onSend={onSend} disabled={typing} />
+      </div>
+    </div>
+  );
+}
+
+function UserMsg({ content }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ maxWidth: '75%', background: '#1a1a1a', borderRadius: '12px 12px 2px 12px', padding: '10px 14px', fontSize: 12, color: '#E8E2D9', lineHeight: 1.6 }}>{content}</div>
+    </div>
+  );
+}
+
+function AIMsg({ content, geminiSummary, questionText, onSaveCorrection, isSuper, fresh }) {
+  const [corrOpen, setCorrOpen]         = useState(false);
+  const [corrText, setCorrText]         = useState('');
+  const [saved, setSaved]               = useState(false);
+  const [markedCorrect, setMarkedCorrect] = useState(false);
+
+  async function handleSave() {
+    if (!corrText.trim()) return;
+    await onSaveCorrection(geminiSummary || content, corrText, questionText || '');
+    setSaved(true);
+    setCorrOpen(false);
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#C4934A,#8B6A35)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 12, fontFamily: 'serif', flexShrink: 0, marginTop: 2 }}>V</div>
+      <div style={{ flex: 1 }}>
+        <div style={{ background: '#111', border: '0.5px solid #222', borderRadius: '12px 12px 12px 2px', padding: '10px 14px', fontSize: 12, color: '#E8E2D9', lineHeight: 1.6 }}
+          dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
+        
+        {fresh && !saved && !markedCorrect && (
+          <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+            <button onClick={() => { setMarkedCorrect(true); setCorrOpen(false); setCorrText(''); }}
+              style={{ fontSize: 10, padding: '3px 10px', borderRadius: 6, border: '0.5px solid #4a9a6a44', background: '#0a1a0a', color: '#4a9a6a', cursor: 'pointer' }}>
+              ✓ Correct
+            </button>
+            <button onClick={() => setCorrOpen(o => !o)}
+              style={{ fontSize: 10, padding: '3px 10px', borderRadius: 6, border: '0.5px solid #ff4a4a44', background: '#1a0a0a', color: '#ff4a4a', cursor: 'pointer' }}>
+              ✗ Wrong
+            </button>
+          </div>
+        )}
+        {fresh && markedCorrect && (
+          <div style={{ fontSize: 10, color: '#4a9a6a', marginTop: 4 }}>✓ Answer is correct</div>
+        )}
+        {fresh && saved && !corrOpen && (
+          <div style={{ fontSize: 10, color: '#C4934A', marginTop: 4 }}>
+            ✓ {isSuper ? 'Correction saved and live' : 'Correction submitted for approval'}
+          </div>
+        )}
+
+        {fresh && corrOpen && !saved && (
+          <div style={{ marginTop: 8, padding: 12, background: '#0D0D0D', border: '0.5px solid #C4934A44', borderRadius: 10 }}>
+            <div style={{ fontSize: 10, color: '#666', marginBottom: 6 }}>Type the correct answer:</div>
+            <textarea value={corrText} onChange={e => setCorrText(e.target.value)}
+              placeholder="Write the correct version..."
+              style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: '#E8E2D9', fontSize: 11, resize: 'none', minHeight: 70, lineHeight: 1.6 }} />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 6 }}>
+              <button onClick={handleSave} style={{ fontSize: 11, padding: '5px 14px', borderRadius: 7, background: '#C4934A', border: 'none', color: '#000', cursor: 'pointer', fontWeight: 500 }}>
+                {isSuper ? 'Save & go live' : 'Submit for approval'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TypingDots() {
+  return (
+    <div style={{ display: 'flex', gap: 8 }}>
+      <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#C4934A,#8B6A35)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 12, fontFamily: 'serif', flexShrink: 0 }}>V</div>
+      <div style={{ background: '#111', border: '0.5px solid #222', borderRadius: 12, padding: '10px 14px', display: 'flex', gap: 4, alignItems: 'center' }}>
+        {[0, 0.2, 0.4].map((d, i) => (
+          <div key={i} className="dot" style={{ width: 6, height: 6, borderRadius: '50%', background: '#C4934A', animationDelay: `${d}s` }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+// ── FIXES VIEW ────────────────────────────────────────────
+
+function FixesView({ isSuper, userId }) {
+  const [corrections, setCorrections]       = useState([]);
+  const [filter, setFilter]                 = useState('all');
+  const [adminFilter, setAdminFilter]       = useState('all');
+  const [admins, setAdmins]                 = useState([]);
+  const [selected, setSelected]             = useState(null);
+  const [editText, setEditText]             = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  useEffect(() => { loadCorrections(); }, []);
+
+  async function loadCorrections() {
+    const url = isSuper ? '/corrections' : '/corrections/mine';
+    const res  = await authFetch(url);
+    const data = await res.json();
+    setCorrections(data.corrections || []);
+    if (isSuper) {
+      const unique = [...new Map((data.corrections || [])
+        .filter(c => c.submitter_name)
+        .map(c => [c.submitted_by, { id: c.submitted_by, name: c.submitter_name }]))
+        .values()];
+      setAdmins(unique);
+    }
+  }
+
+  async function approve(id) {
+    await authFetch(`/corrections/${id}/approve`, { method: 'PATCH' });
+    setCorrections(prev => prev.map(c => c.id === id ? { ...c, status: 'approved' } : c));
+  }
+
+  async function deactivate(id) {
+    await authFetch(`/corrections/${id}/deactivate`, { method: 'PATCH' });
+    setCorrections(prev => prev.map(c => c.id === id ? { ...c, status: 'pending' } : c));
+  }
+
+  async function deleteCorrection(id) {
+    await authFetch(`/corrections/${id}`, { method: 'DELETE' });
+    setCorrections(prev => prev.filter(c => c.id !== id));
+    setDeleteConfirmId(null);
+  }
+
+  async function saveEdit(id) {
+    await authFetch(`/corrections/${id}/update`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ correct_answer: editText }),
+    });
+    setCorrections(prev => prev.map(c => c.id === id ? { ...c, correct_answer: editText, status: isSuper ? 'approved' : 'pending' } : c));
+    setSelected(null);
+  }
+
+  const filtered = corrections.filter(c => {
+    const statusOk = filter === 'all' || c.status === filter;
+    const adminOk  = adminFilter === 'all' || c.submitted_by === adminFilter;
+    return statusOk && adminOk;
+  });
+
+  if (selected) {
+    const c = corrections.find(x => x.id === selected);
+    return (
+      <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+        <button onClick={() => setSelected(null)} style={{ fontSize: 11, color: '#666', background: 'none', border: 'none', cursor: 'pointer', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 4 }}>← Back to fixes</button>
+        <div style={{ background: '#111', border: '0.5px solid #222', borderRadius: 12, padding: 16, maxWidth: 640 }}>
+          <div style={{ fontSize: 10, color: '#555', marginBottom: 4 }}>Question asked</div>
+          <div style={{ fontSize: 12, color: '#888', background: '#0D0D0D', borderRadius: 7, padding: '8px 10px', marginBottom: 12, lineHeight: 1.6 }}>{c?.question_text || c?.gemini_summary}</div>
+          <div style={{ fontSize: 10, color: '#555', marginBottom: 4 }}>AI answer given</div>
+          <div style={{ fontSize: 12, color: '#666', background: '#0D0D0D', borderRadius: 7, padding: '8px 10px', marginBottom: 12, lineHeight: 1.6, borderLeft: '2px solid #333' }}>{c?.gemini_summary}</div>
+          <div style={{ fontSize: 10, color: '#555', marginBottom: 4 }}>Correction {c?.submitter_name && <span style={{ color: '#C4934A' }}>by {c.submitter_name}</span>}</div>
+          <textarea value={editText} onChange={e => setEditText(e.target.value)}
+            style={{ width: '100%', background: '#0D0D0D', border: '0.5px solid #333', borderRadius: 7, padding: '8px 10px', color: '#4a9a6a', fontSize: 12, lineHeight: 1.6, resize: 'none', outline: 'none', minHeight: 90 }} />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
+            <button onClick={() => setSelected(null)} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 7, border: '0.5px solid #333', background: 'none', color: '#666', cursor: 'pointer' }}>Cancel</button>
+            <button onClick={() => saveEdit(selected)} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 7, background: '#1a1200', border: '0.5px solid #C4934A44', color: '#C4934A', cursor: 'pointer' }}>Save edit</button>
+            {isSuper && c?.status === 'pending' && (
+              <button onClick={() => { approve(selected); setSelected(null); }} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 7, background: '#4a9a6a', border: 'none', color: '#fff', cursor: 'pointer' }}>Approve</button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: 20, position: 'relative' }}>
+
+      {/* Delete confirmation popup */}
+      {deleteConfirmId && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+          <div style={{ background: '#111', border: '0.5px solid #333', borderRadius: 12, padding: 20, width: 320 }}>
+            <div style={{ fontSize: 13, color: '#E8E2D9', marginBottom: 8, fontWeight: 500 }}>Delete correction?</div>
+            <div style={{ fontSize: 11, color: '#666', marginBottom: 16 }}>This will permanently remove it from all views. This cannot be undone.</div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setDeleteConfirmId(null)}
+                style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: '0.5px solid #333', background: 'none', color: '#666', cursor: 'pointer' }}>
+                Cancel
+              </button>
+              <button onClick={() => deleteCorrection(deleteConfirmId)}
+                style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, background: '#ff4a4a', border: 'none', color: '#fff', fontWeight: 500, cursor: 'pointer' }}>
+                Yes, delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+
+        {isSuper && (
+          <>
+            <span style={{ fontSize: 11, color: '#666' }}>By:</span>
+            <select value={adminFilter} onChange={e => setAdminFilter(e.target.value)} style={{ background: '#111', border: '0.5px solid #333', borderRadius: 6, color: '#E8E2D9', fontSize: 11, padding: '4px 8px' }}>
+              <option value="all">All small admins</option>
+              {admins.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </>
+        )}
+        <span style={{ fontSize: 11, color: '#666' }}>Status:</span>
+        <select value={filter} onChange={e => setFilter(e.target.value)} style={{ background: '#111', border: '0.5px solid #333', borderRadius: 6, color: '#E8E2D9', fontSize: 11, padding: '4px 8px' }}>
+          <option value="all">All</option>
+          <option value="pending">Pending</option>
+          <option value="approved">Approved</option>
+        </select>
+      </div>
+
+      {filtered.length === 0 && <div style={{ color: '#444', fontSize: 12, textAlign: 'center', padding: 40 }}>No corrections found</div>}
+
+      {filtered.map(c => (
+        <div key={c.id} onClick={() => { setSelected(c.id); setEditText(c.correct_answer); }}
+          style={{ background: '#111', border: '0.5px solid #222', borderRadius: 10, padding: '12px 14px', marginBottom: 8, cursor: 'pointer' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+            <div style={{ fontSize: 11, color: '#C4934A', fontWeight: 500 }}>Q: {(c.question_text || c.gemini_summary || '').substring(0, 80)}</div>
+            <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 20, flexShrink: 0, marginLeft: 8, background: c.status === 'approved' ? '#0a1a0a' : '#1a1200', color: c.status === 'approved' ? '#4a9a6a' : '#C4934A', border: `0.5px solid ${c.status === 'approved' ? '#4a9a6a44' : '#C4934A44'}` }}>
+              {c.status === 'approved' ? 'Approved' : 'Pending'}
+            </span>
+          </div>
+          <div style={{ fontSize: 11, color: '#4a9a6a', lineHeight: 1.5, borderLeft: '2px solid #4a9a6a44', paddingLeft: 8 }}>{c.correct_answer.substring(0, 120)}...</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+            <div style={{ fontSize: 10, color: '#444' }}>{c.submitter_name ? `by ${c.submitter_name}` : ''}</div>
+            {isSuper && (
+              <div style={{ display: 'flex', gap: 6 }} onClick={e => e.stopPropagation()}>
+                {c.status === 'pending' && (
+                  <button onClick={() => approve(c.id)}
+                    style={{ fontSize: 10, padding: '3px 10px', borderRadius: 6, border: '0.5px solid #4a9a6a44', background: '#0a1a0a', color: '#4a9a6a', cursor: 'pointer' }}>
+                    Approve
+                  </button>
+                )}
+                {c.status === 'approved' && (
+                  <button onClick={() => deactivate(c.id)}
+                    style={{ fontSize: 10, padding: '3px 10px', borderRadius: 6, border: '0.5px solid #C4934A44', background: '#1a0a0a', color: '#C4934A', cursor: 'pointer' }}>
+                    Deactivate
+                  </button>
+                )}
+                <button onClick={() => setDeleteConfirmId(c.id)}
+                  style={{ fontSize: 10, padding: '3px 10px', borderRadius: 6, border: '0.5px solid #ff4a4a44', background: '#1a0a0a', color: '#ff4a4a', cursor: 'pointer' }}>
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+// ── SMALL ADMINS VIEW ─────────────────────────────────────
+
+function SmallAdminsView() {
+  const [admins, setAdmins]     = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [profileTab, setProfileTab] = useState('corrections');
+  const [profileData, setProfileData] = useState([]);
+  const [email, setEmail]           = useState('');
+  const [newName, setNewName]       = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
+  const [createError, setCreateError] = useState('');
+  useEffect(() => { loadAdmins(); }, []);
+
+  async function loadAdmins() {
+    const res  = await authFetch('/admin/small-admins');
+    const data = await res.json();
+    setAdmins(data.admins || []);
+  }
+
+  async function createAdmin() {
+    if (!newName.trim() || !email.trim() || !newPassword.trim()) {
+      setCreateError('All fields are required.');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setCreateError('Password must be at least 6 characters.');
+      return;
+    }
+    setCreateError('');
+    try {
+      const res  = await authFetch('/admin/small-admins', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          email:        email.trim(),
+          password:     newPassword,
+          display_name: newName.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCreateError(data.detail || 'Something went wrong.');
+        return;
+      }
+      setEmail(''); setNewName(''); setNewPassword('');
+      setShowCreate(false);
+      loadAdmins();
+    } catch(e) {
+      setCreateError('Cannot connect to server.');
+    }
+  }
+
+
+  async function removeAdmin(id) {
+    await authFetch(`/admin/small-admins/${id}`, { method: 'DELETE' });
+    setAdmins(prev => prev.filter(a => a.id !== id));
+  }
+
+  async function openProfile(admin) {
+    setSelected(admin);
+    setProfileTab('corrections');
+    await loadProfileData(admin.id, 'corrections');
+  }
+
+  async function loadProfileData(adminId, tab) {
+    const url  = tab === 'corrections' ? `/admin/small-admins/${adminId}/corrections` : `/admin/small-admins/${adminId}/sessions`;
+    const res  = await authFetch(url);
+    const data = await res.json();
+    setProfileData(data.corrections || data.sessions || []);
+  }
+
+  async function switchProfileTab(tab) {
+    setProfileTab(tab);
+    await loadProfileData(selected.id, tab);
+  }
+
+  async function approveFromProfile(id) {
+    await authFetch(`/corrections/${id}/approve`, { method: 'PATCH' });
+    setProfileData(prev => prev.map(c => c.id === id ? { ...c, status: 'approved' } : c));
+  }
+
+  if (selected) {
+    return (
+      <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <button onClick={() => setSelected(null)} style={{ fontSize: 11, color: '#666', background: 'none', border: 'none', cursor: 'pointer' }}>← Small Admins</button>
+          <span style={{ color: '#333' }}>|</span>
+          <div style={{ width: 28, height: 28, borderRadius: '50%', background: '#1a1a2a', border: '0.5px solid #7a7aff44', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7a7aff', fontSize: 11, fontWeight: 500 }}>
+            {selected.display_name?.charAt(0) || '?'}
+          </div>
+          <span style={{ fontSize: 13, color: '#E8E2D9' }}>{selected.display_name}</span>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+          {['corrections', 'sessions'].map(tab => (
+            <button key={tab} onClick={() => switchProfileTab(tab)}
+              style={{ padding: '5px 14px', borderRadius: 6, fontSize: 11, cursor: 'pointer', border: '0.5px solid #333', background: profileTab === tab ? '#1a1200' : 'none', color: profileTab === tab ? '#C4934A' : '#666' }}>
+              {tab === 'corrections' ? `Corrections (${profileData.length})` : `Sessions (${profileData.length})`}
+            </button>
+          ))}
+        </div>
+
+        {profileTab === 'corrections' && profileData.map(c => (
+          <div key={c.id} style={{ background: '#111', border: '0.5px solid #222', borderRadius: 10, padding: '12px 14px', marginBottom: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div style={{ fontSize: 11, color: '#C4934A' }}>Q: {(c.question_text || c.gemini_summary || '').substring(0, 70)}</div>
+              <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 20, background: c.status === 'approved' ? '#0a1a0a' : '#1a1200', color: c.status === 'approved' ? '#4a9a6a' : '#C4934A', border: `0.5px solid ${c.status === 'approved' ? '#4a9a6a44' : '#C4934A44'}` }}>{c.status}</span>
+            </div>
+            <div style={{ fontSize: 11, color: '#4a9a6a', lineHeight: 1.5 }}>{c.correct_answer.substring(0, 100)}...</div>
+            {c.status === 'pending' && (
+              <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+                <button onClick={() => approveFromProfile(c.id)} style={{ fontSize: 10, padding: '3px 10px', borderRadius: 6, border: '0.5px solid #4a9a6a44', background: '#0a1a0a', color: '#4a9a6a', cursor: 'pointer' }}>Approve</button>
+              </div>
+            )}
+          </div>
+        ))}
+
+        {profileTab === 'sessions' && profileData.map(s => (
+          <div key={s.id} style={{ background: '#111', border: '0.5px solid #222', borderRadius: 10, padding: '10px 14px', marginBottom: 6 }}>
+            <div style={{ fontSize: 12, color: '#E8E2D9' }}>{s.title || 'Untitled session'}</div>
+            <div style={{ fontSize: 10, color: '#444', marginTop: 3 }}>{new Date(s.updated_at).toLocaleDateString()}</div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+        <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{admins.length} small admins</div>
+        <button onClick={() => setShowCreate(true)} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 7, border: '0.5px solid #C4934A44', background: '#1a1200', color: '#C4934A', cursor: 'pointer' }}>+ Create Admin</button>
+      </div>
+
+      {showCreate && (
+  <div style={{ background: '#111', border: '0.5px solid #C4934A44', borderRadius: 10, padding: 16, marginBottom: 14 }}>
+    <div style={{ fontSize: 12, color: '#C4934A', marginBottom: 12, fontWeight: 500 }}>Create New Small Admin</div>
+    
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 10, color: '#555', marginBottom: 4 }}>Display Name</div>
+      <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Full name"
+        style={{ width: '100%', background: '#0D0D0D', border: '0.5px solid #333', borderRadius: 7, padding: '7px 10px', color: '#E8E2D9', fontSize: 11, outline: 'none' }} />
+    </div>
+
+    <div style={{ marginBottom: 10 }}>
+      <div style={{ fontSize: 10, color: '#555', marginBottom: 4 }}>Email</div>
+      <input value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@email.com" type="email"
+        style={{ width: '100%', background: '#0D0D0D', border: '0.5px solid #333', borderRadius: 7, padding: '7px 10px', color: '#E8E2D9', fontSize: 11, outline: 'none' }} />
+    </div>
+
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 10, color: '#555', marginBottom: 4 }}>Password</div>
+      <input value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Min 6 characters" type="password"
+        style={{ width: '100%', background: '#0D0D0D', border: '0.5px solid #333', borderRadius: 7, padding: '7px 10px', color: '#E8E2D9', fontSize: 11, outline: 'none' }} />
+    </div>
+
+    {createError && (
+      <div style={{ fontSize: 11, color: '#ff4a4a', marginBottom: 10, padding: '6px 10px', background: '#1a0a0a', borderRadius: 6 }}>
+        {createError}
+      </div>
+    )}
+
+    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+      <button onClick={() => { setShowCreate(false); setCreateError(''); }}
+        style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, border: '0.5px solid #333', background: 'none', color: '#666', cursor: 'pointer' }}>
+        Cancel
+      </button>
+      <button onClick={createAdmin}
+        style={{ fontSize: 11, padding: '5px 12px', borderRadius: 6, background: '#C4934A', border: 'none', color: '#000', fontWeight: 500, cursor: 'pointer' }}>
+        Create Admin
+      </button>
+    </div>
+  </div>
+)}
+
+      {admins.map(a => (
+        <div key={a.id} onClick={() => openProfile(a)} style={{ background: '#111', border: '0.5px solid #222', borderRadius: 10, padding: '12px 14px', marginBottom: 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#1a1a2a', border: '0.5px solid #7a7aff44', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7a7aff', fontSize: 12, fontWeight: 500, flexShrink: 0 }}>
+            {a.display_name?.charAt(0) || '?'}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 12, color: '#E8E2D9' }}>{a.display_name}</div>
+            <div style={{ fontSize: 10, color: '#555' }}>{a.email}</div>
+            <div style={{ fontSize: 10, color: '#444' }}>Created {new Date(a.created_at).toLocaleDateString()}</div>
+          </div>
+          <button onClick={e => { e.stopPropagation(); removeAdmin(a.id); }}
+            style={{ fontSize: 10, padding: '4px 10px', borderRadius: 6, border: '0.5px solid #ff4a4a44', background: '#1a0a0a', color: '#ff4a4a', cursor: 'pointer' }}>
+            Remove
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+// ── USERS VIEW ────────────────────────────────────────────
+
+function UsersView() {
+  const [users, setUsers]               = useState([]);
+  const [selected, setSelected]         = useState(null);
+  const [chats, setChats]               = useState([]);
+  const [loadingChats, setLoadingChats] = useState(false);
+  const [selectedChat, setSelectedChat] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [loadingMsgs, setLoadingMsgs]   = useState(false);
+  const [roleFilter, setRoleFilter]     = useState('all');
+  useEffect(() => {
+    authFetch('/admin/users').then(r => r.json()).then(d => setUsers(d.users || []));
+  }, []);
+
+  const filteredUsers = roleFilter === 'all'
+    ? users
+    : users.filter(u => u.role === roleFilter);
+
+  async function openChat(chat) {
+    setSelectedChat(chat);
+    setChatMessages([]);
+    setLoadingMsgs(true);
+    try {
+      const res  = await authFetch(`/chats/${chat.id}/messages`);
+      const data = await res.json();
+      const sorted = (data.messages || []).sort((a, b) => {
+        const timeDiff = new Date(a.created_at) - new Date(b.created_at);
+        if (timeDiff !== 0) return timeDiff;
+        if (a.role === 'user' && b.role === 'assistant') return -1;
+        if (a.role === 'assistant' && b.role === 'user') return 1;
+        return 0;
+      });
+      setChatMessages(sorted);
+    } catch(e) { console.error(e); }
+    finally { setLoadingMsgs(false); }
+  }
+  async function openUser(u) {
+    setSelected(u);
+    setChats([]);
+    setLoadingChats(true);
+    try {
+      const res  = await authFetch(`/admin/users/${u.id}/chats`);
+      const data = await res.json();
+      setChats(data.chats || []);
+    } catch(e) { console.error(e); }
+    finally { setLoadingChats(false); }
+  }
+
+  if (selected && selectedChat) {
+    return (
+      <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+
+        {/* Breadcrumb */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, fontSize: 11, color: '#555' }}>
+          <button onClick={() => { setSelected(null); setSelectedChat(null); }}
+            style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: 11 }}>
+            Users
+          </button>
+          <span>→</span>
+          <button onClick={() => setSelectedChat(null)}
+            style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: 11 }}>
+            {selected.display_name}
+          </button>
+          <span>→</span>
+          <span style={{ color: '#E8E2D9' }}>{selectedChat.title || 'Conversation'}</span>
+        </div>
+
+        {/* Chat title */}
+        <div style={{ fontSize: 13, color: '#C4934A', marginBottom: 16, fontWeight: 500 }}>
+          {selectedChat.title || 'Conversation'}
+        </div>
+
+        {loadingMsgs && <div style={{ color: '#444', fontSize: 12, padding: 20 }}>Loading messages...</div>}
+
+        {/* Messages */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {chatMessages.map(m => (
+            <div key={m.id} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', alignItems: 'flex-start' }}>
+              {m.role === 'assistant' && (
+                <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'linear-gradient(135deg,#C4934A,#8B6A35)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 11, fontFamily: 'serif', flexShrink: 0, marginRight: 8, marginTop: 2 }}>V</div>
+              )}
+              <div style={{
+                maxWidth: '70%',
+                background: m.role === 'user' ? '#1a1a1a' : '#111',
+                border: m.role === 'user' ? 'none' : '0.5px solid #222',
+                borderRadius: m.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                padding: '10px 14px',
+                fontSize: 12,
+                color: '#E8E2D9',
+                lineHeight: 1.6,
+              }}>
+                {m.role === 'assistant'
+                  ? <div className="md-content" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.content) }} />
+                  : m.content
+                }
+              </div>
+              {m.role === 'user' && (
+                <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#1a1a1a', border: '0.5px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888', fontSize: 11, flexShrink: 0, marginLeft: 8, marginTop: 2 }}>👤</div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {!loadingMsgs && chatMessages.length === 0 && (
+          <div style={{ color: '#444', fontSize: 12, textAlign: 'center', padding: 30 }}>No messages</div>
+        )}
+      </div>
+    );
+  }
+
+  if (selected) {
+    return (
+      <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+        <button onClick={() => setSelected(null)}
+          style={{ fontSize: 11, color: '#666', background: 'none', border: 'none', cursor: 'pointer', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 4 }}>
+          ← Users
+        </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#1a1a1a', border: '0.5px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888', fontSize: 13 }}>
+            {selected.display_name?.charAt(0) || '?'}
+          </div>
+          <div>
+            <div style={{ fontSize: 13, color: '#E8E2D9' }}>{selected.display_name}</div>
+            <div style={{ fontSize: 11, color: '#555' }}>{selected.email}</div>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>
+          {chats.length} conversations
+        </div>
+
+        {loadingChats && <div style={{ color: '#444', fontSize: 12, padding: 20 }}>Loading...</div>}
+
+        {chats.map(c => (
+          <div key={c.id} onClick={() => openChat(c)}
+            style={{ background: '#111', border: '0.5px solid #222', borderRadius: 10, padding: '10px 14px', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = '#C4934A44'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = '#222'}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12, color: '#E8E2D9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {c.title || 'New conversation'}
+              </div>
+              <div style={{ fontSize: 10, color: '#444', marginTop: 3 }}>
+                {new Date(c.updated_at).toLocaleDateString()}
+              </div>
+            </div>
+            <span style={{ fontSize: 11, color: '#555' }}>→</span>
+          </div>
+        ))}
+
+        {!loadingChats && chats.length === 0 && (
+          <div style={{ color: '#444', fontSize: 12, textAlign: 'center', padding: 30 }}>
+            No conversations yet
+          </div>
+        )}
+      </div>
+    );
+  }
+
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          {filteredUsers.length} users
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11, color: '#666' }}>Filter:</span>
+          <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)}
+            style={{ background: '#111', border: '0.5px solid #333', borderRadius: 6, color: '#E8E2D9', fontSize: 11, padding: '4px 8px', outline: 'none', cursor: 'pointer' }}>
+            <option value="all">All</option>
+            <option value="user">Users</option>
+            <option value="small_admin">Small Admins</option>
+            <option value="super_admin">Super Admins</option>
+          </select>
+        </div>
+      </div>
+      {filteredUsers.map(u => (
+        <div key={u.id} onClick={() => openUser(u)}
+          style={{ background: '#111', border: '0.5px solid #222', borderRadius: 10, padding: '10px 14px', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#4a9a6a', flexShrink: 0 }} />
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, color: '#E8E2D9' }}>{u.display_name}</div>
+            <div style={{ fontSize: 10, color: '#555' }}>{u.email}</div>
+          </div>
+          <div style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, background: '#1a1a1a', color: '#666' }}>
+            {u.role || 'user'}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

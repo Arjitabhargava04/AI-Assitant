@@ -38,6 +38,7 @@ from auth.routes import router as auth_router
 from auth.middleware import require_auth
 from chats.routes import router as chats_router
 from corrections.routes import router as corrections_router
+from admin.routes import router as admin_router
 from db.connection import test_connection
 from db.queries import save_message
 from config.settings import DEBUG_MODE, TONE_PRESETS
@@ -80,6 +81,7 @@ app.add_middleware(
 app.include_router(auth_router,        prefix="/auth",        tags=["auth"])
 app.include_router(chats_router,       prefix="/chats",       tags=["chats"])
 app.include_router(corrections_router, prefix="/corrections", tags=["corrections"])
+app.include_router(admin_router,       prefix="/admin",       tags=["admin"])
 
 
 # ── POST /query ───────────────────────────────────────────

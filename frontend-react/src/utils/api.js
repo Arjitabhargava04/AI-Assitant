@@ -1,9 +1,9 @@
 // src/utils/api.js
 // Central API configuration and authenticated fetch helper
 // for the local we have this
-// export const API = 'http://localhost:8000';
+export const API = 'http://localhost:8000';
 // and for the port forward
-export const API = 'https://0rb9hf09-8000.inc1.devtunnels.ms';
+// export const API = 'https://0rb9hf09-8000.inc1.devtunnels.ms';
 export function getToken() {
   return localStorage.getItem('vk_token');
 }
