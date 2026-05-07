@@ -34,8 +34,38 @@ export default function InputArea({ onSend, disabled }) {
     el.style.height = Math.min(el.scrollHeight, 120) + 'px';
   }
 
+  function detectFileType(file) {
+    const mime = file.type.toLowerCase();
+    const ext  = file.name.split('.').pop().toLowerCase();
+    const imageExts = ['jpg','jpeg','png','gif','webp','bmp','svg'];
+    const audioExts = ['mp3','wav','ogg','m4a','aac','webm','flac'];
+    const videoExts = ['mp4','webm','mov','avi','mkv','flv','wmv'];
+    if (mime.startsWith('image') || imageExts.includes(ext)) return 'image';
+    if (mime.startsWith('audio') || audioExts.includes(ext)) return 'audio';
+    if (mime.startsWith('video') || videoExts.includes(ext)) return 'video';
+    return null;
+  }
+
   function attachFile(e, type) {
     const f = e.target.files[0]; if (!f) return;
+    const url = type === 'image' ? URL.createObjectURL(f) : null;
+    if (prevUrls[type]) URL.revokeObjectURL(prevUrls[type]);
+    setFiles(prev => ({ ...prev, [type]: f }));
+    setPrevUrls(prev => ({ ...prev, [type]: url }));
+    setPlusOpen(false);
+  }
+
+  function attachFileSmart(e) {
+    const f = e.target.files[0];
+    if (!f) return;
+
+    const type = detectFileType(f);
+    if (!type) return;
+
+    const limits = { image: 20, audio: 100, video: 500 };
+    const sizeMB = f.size / (1024 * 1024);
+    if (sizeMB > limits[type]) return;
+
     const url = type === 'image' ? URL.createObjectURL(f) : null;
     if (prevUrls[type]) URL.revokeObjectURL(prevUrls[type]);
     setFiles(prev => ({ ...prev, [type]: f }));
@@ -213,27 +243,23 @@ export default function InputArea({ onSend, disabled }) {
             </button>
             {plusOpen && (
               <div className="absolute bottom-full left-0 mb-2 bg-bg2 border border-b2 rounded-xl w-52 shadow-xl z-50 py-1 slide-up">
-                <PlusItem icon="🖼️" label="Upload Image">
-                  <input type="file" accept="image/*" className="absolute inset-0 opacity-0 cursor-pointer"
-                    onChange={e => attachFile(e, 'image')} />
-                </PlusItem>
-                <PlusItem icon="🎵" label="Upload Audio">
-                  <input type="file" accept="audio/*" className="absolute inset-0 opacity-0 cursor-pointer"
-                    onChange={e => attachFile(e, 'audio')} />
-                </PlusItem>
-                <PlusItem icon="🎬" label="Upload Video">
-                  <input type="file" accept="video/*" className="absolute inset-0 opacity-0 cursor-pointer"
-                    onChange={e => attachFile(e, 'video')} />
-                </PlusItem>
+                <PlusItem icon={<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>} label="Add files or photos">
+  <input type="file" accept="*/*" className="absolute inset-0 opacity-0 cursor-pointer"
+    onChange={e => attachFileSmart(e)} />
+</PlusItem>
                 <PlusItem icon="🎙️" label="Record Audio" onClick={() => startRecord('audio')} />
                 <PlusItem icon="📹" label="Record Video" onClick={() => startRecord('video')} />
                 <div className="h-px bg-b1 my-1" />
                 <div className="relative group">
                   <div className="flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-t2 hover:bg-bg3 hover:text-t1 cursor-pointer transition-colors">
-                    <span className="text-base w-5 text-center">✍️</span>
-                    <span>{TONES.find(t => t.id === tone)?.label || 'Response Style'}</span>
-                    <span className="ml-auto text-t3 text-xs">›</span>
-                  </div>
+  <span className="w-5 flex items-center justify-center">
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+    </svg>
+  </span>
+  <span>Use style</span>
+  <span className="ml-auto text-t3 text-xs">›</span>
+</div>
                   <div className="absolute bottom-0 left-full ml-1 bg-bg2 border border-b2 rounded-xl w-44 shadow-xl z-[60] py-1 hidden group-hover:block">
                     {TONES.map(t => (
                       <div key={t.id}
@@ -265,7 +291,7 @@ function PlusItem({ icon, label, onClick, children }) {
   return (
     <div onClick={onClick}
       className="relative flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-t2 hover:bg-bg3 hover:text-t1 cursor-pointer transition-colors">
-      <span className="text-base w-5 text-center">{icon}</span>
+      <span className="w-5 flex items-center justify-center">{icon}</span>
       <span>{label}</span>
       {children}
     </div>

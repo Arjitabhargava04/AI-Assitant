@@ -61,21 +61,37 @@ export default function Admin() {
   }
 
   async function handleSend({ text, tone, files }) {
-    if (typing || !text.trim()) return;
-    setMessages(prev => [...prev, { id: Date.now()+'_u', role: 'user', content: text }]);
+    const hasText  = text && text.trim().length > 0;
+    const hasAudio = files?.audio != null;
+    const hasVideo = files?.video != null;
+    const hasImage = files?.image != null;
+
+    if (typing || (!hasText && !hasAudio && !hasVideo && !hasImage)) return;
+
+    const userContent = hasText ? text
+      : hasAudio ? '[Audio query]'
+      : hasVideo ? '[Video query]'
+      : '[Image query]';
+
+    setMessages(prev => [...prev, { id: Date.now()+'_u', role: 'user', content: userContent }]);
     setTyping(true);
     const sessionId = await ensureSessionId(text);
     try {
       const fd = new FormData();
-      fd.append('text', text); fd.append('tone', tone); fd.append('chat_id', sessionId);
+      fd.append('text', text);
+      fd.append('tone', tone);
+      fd.append('chat_id', sessionId);
       if (files.image) fd.append('image', files.image);
+      if (files.audio) fd.append('audio', files.audio);
+      if (files.video) fd.append('video', files.video);
+
       const res  = await authFetch('/query', { method: 'POST', body: fd });
       const data = await res.json();
       setMessages(prev => [...prev, {
         id: Date.now()+'_a', role: 'assistant',
         content: data.answer || 'No response.',
         geminiSummary: data.answer || '',
-        questionText: text,
+        questionText: userContent,
         tone,
         fresh: true,
       }]);
