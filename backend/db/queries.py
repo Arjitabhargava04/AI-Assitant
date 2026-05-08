@@ -341,19 +341,20 @@ def save_correction_v2(
     status:         str = "pending",
     input_type:     str = "text",
 ) -> dict:
-    """Save a correction with question_text, submitter and status."""
-    cid = _new_id()
+    cid          = _new_id()
+    search_words = generate_search_words(question_text, gemini_summary, correct_answer)
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """INSERT INTO corrections
                    (id, gemini_summary, correct_answer, question_text,
-                    submitted_by, status, input_type)
-                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                    submitted_by, status, input_type, search_words)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
                 (cid, gemini_summary, correct_answer, question_text,
-                 submitted_by, status, input_type)
+                 submitted_by, status, input_type, search_words)
             )
         conn.commit()
+
     log("DB", f"Correction saved: {cid} | status={status}", "success")
     return {
         "id": cid,
@@ -366,17 +367,39 @@ def save_correction_v2(
 
 
 def get_approved_corrections() -> list:
-    """Get only APPROVED corrections — used by pipeline."""
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT id, gemini_summary, correct_answer,
-                          question_text, input_type, created_at
+                          question_text, input_type, search_words, created_at
                    FROM corrections
                    WHERE is_active = TRUE AND status = 'approved'
                    ORDER BY created_at DESC"""
             )
             return cur.fetchall()
+
+def regenerate_all_search_words() -> None:
+    """Update search_words for all existing corrections."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT id, question_text, gemini_summary, correct_answer
+                   FROM corrections"""
+            )
+            rows = cur.fetchall()
+        for row in rows:
+            sw = generate_search_words(
+                row['question_text'] or '',
+                row['gemini_summary'] or '',
+                row['correct_answer'] or '',
+            )
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE corrections SET search_words = %s WHERE id = %s",
+                    (sw, row['id'])
+                )
+        conn.commit()
+    log("DB", "All search_words regenerated", "success")        
 
 
 def get_corrections_for_super_admin(submitted_by: str = None) -> list:
@@ -489,3 +512,32 @@ def update_message_content(message_id: str, content: str) -> None:
             )
         conn.commit()
     log("DB", f"Message updated: {message_id}", "success")    
+
+
+def generate_search_words(question_text: str, gemini_summary: str, correct_answer: str) -> str:
+    """
+    Combine all three texts, split into words,
+    remove common words, return comma separated.
+    """
+    COMMON_WORDS = {
+        "the", "a", "an", "is", "are", "was", "were", "who", "what",
+        "when", "where", "tell", "about", "how", "why", "me", "this",
+        "that", "it", "in", "of", "and", "or", "but", "for", "with",
+        "to", "by", "from", "on", "at", "be", "do", "did", "have",
+        "has", "had", "will", "would", "could", "should", "which",
+        "than", "then", "there", "their", "its", "not", "also",
+        "into", "after", "before", "between", "during", "through",
+        "over", "under", "again", "further", "once", "built", "build",
+        "know", "give", "information", "history", "ancient", "made",
+        "known", "called", "located", "found", "used", "became",
+        "became", "became", "i", "you", "he", "she", "we", "they",
+        "my", "your", "his", "her", "our", "they", "them", "me",
+        "him", "us", "can", "may", "might", "shall", "been", "being"
+    }
+
+    combined = f"{question_text} {gemini_summary} {correct_answer}".lower()
+    import re
+    words = re.findall(r'\b[a-z0-9]+\b', combined)
+    filtered = [w for w in words if w not in COMMON_WORDS and len(w) > 2]
+    unique = list(dict.fromkeys(filtered))
+    return ",".join(unique)    

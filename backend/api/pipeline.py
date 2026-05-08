@@ -61,10 +61,34 @@ async def handle_query(payload: InputPayload) -> dict:
     # Check corrections database before calling AI
     correction_prefix = ""
     gemini_summary    = ""
+    correction_input_type = "text"
+    if payload.has_audio and not payload.has_image:
+        correction_input_type = "audio"
+    elif payload.has_video and not payload.has_image:
+        correction_input_type = "video"
+    elif payload.has_image:
+        correction_input_type = "image"
+
+    # For image queries — get short Gemini summary for matching
+    image_summary = ""
+    if payload.has_image and correction_input_type == "image":
+        try:
+            image_summary = await asyncio.to_thread(
+                _get_image_summary_for_correction,
+                payload.image_bytes,
+                payload.image_mime,
+                payload.text or "",
+            )
+            log("PIPELINE", f"Image summary for correction: {image_summary[:100]}", "info")
+        except Exception as e:
+            log("PIPELINE", f"Image summary failed (non-fatal): {e}", "warn")
+
     try:
         correction = await find_relevant_correction(
-            gemini_summary=payload.text or "",
-            question_text=payload.text or "",
+            question_text  = payload.text or "",
+            gemini_summary = payload.text or "",
+            image_summary  = image_summary,
+            input_type     = correction_input_type,
         )
         if correction:
             correction_prefix = build_correction_prompt_prefix(correction)
@@ -291,6 +315,35 @@ async def _fetch_images(
     log("PIPELINE", f"Images ready: {len(images)}", "success")
     return images
 
+def _get_image_summary_for_correction(
+    image_bytes: bytes,
+    image_mime:  str,
+    user_text:   str = "",
+) -> str:
+    """
+    Get a short Gemini summary of the image for correction matching.
+    Returns 1-2 line description of what the image shows.
+    """
+    from google import genai
+    from google.genai import types
+    from config.settings import GEMINI_API_KEY, GEMINI_MODEL
+
+    client = genai.Client(api_key=GEMINI_API_KEY)
+
+    parts = [
+        types.Part.from_bytes(data=image_bytes, mime_type=image_mime),
+        types.Part.from_text(text="Describe this heritage image in 3-5 short sentences. Focus on: monument name, location, dynasty, period. Be very concise."),
+    ]
+
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=parts,
+        config=types.GenerateContentConfig(
+            temperature=0.0,
+            max_output_tokens=100,
+        ),
+    )
+    return (response.text or "").strip()
 
 def _error(message: str) -> dict:
     log("PIPELINE", f"Error: {message}", "error")
