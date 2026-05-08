@@ -66,9 +66,10 @@ function ActionBtn({ onClick, active, activeColor, title, children }) {
 }
 
 export function UserBubble({ content, imageUrl, audioName, videoName, messageId, isLast, onEditSave }) {
-  const [editing, setEditing]   = useState(false);
-  const [editText, setEditText] = useState(content);
-  const [copied, setCopied]     = useState(false);
+  const [editing, setEditing]     = useState(false);
+  const [editText, setEditText]   = useState(content);
+  const [copied, setCopied]       = useState(false);
+  const [lightbox, setLightbox]   = useState(false);
 
   function copyText() {
     navigator.clipboard.writeText(content);
@@ -113,16 +114,40 @@ export function UserBubble({ content, imageUrl, audioName, videoName, messageId,
             </div>
           </div>
         ) : (
-          <div className="px-4 py-3 bg-ubg border border-b2 rounded-2xl rounded-tr-sm text-sm leading-relaxed">
-            {imageUrl && (
-              <div className="mb-2">
-                <img src={imageUrl} alt="upload" className="max-w-[240px] max-h-[180px] rounded-xl object-cover border border-b2 block" />
+          <div className="bg-ubg border border-b2 rounded-2xl rounded-tr-sm text-sm leading-relaxed overflow-hidden">
+          {imageUrl && (
+            <>
+              {/* Lightbox modal */}
+              {lightbox && (
+                <div
+                  onClick={() => setLightbox(false)}
+                  style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, cursor: 'zoom-out' }}>
+                  <button
+                    onClick={() => setLightbox(false)}
+                    style={{ position: 'absolute', top: 20, right: 20, width: 36, height: 36, borderRadius: '50%', background: '#222', border: '0.5px solid #444', color: '#E8E2D9', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    ✕
+                  </button>
+                  <img src={imageUrl} alt="full"
+                    onClick={e => e.stopPropagation()}
+                    style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12 }} />
+                </div>
+              )}
+
+              {/* Thumbnail */}
+              <div onClick={() => setLightbox(true)} style={{ cursor: 'zoom-in' }}>
+                <img src={imageUrl} alt="upload"
+                  style={{ width: '100%', maxWidth: 280, maxHeight: 200, objectFit: 'cover', display: 'block' }} />
               </div>
-            )}
-            {audioName && <div className="text-t2 text-xs mb-1">🎙️ {audioName}</div>}
-            {videoName && <div className="text-t2 text-xs mb-1">📹 {videoName}</div>}
-            {content && <p className="text-t1">{content}</p>}
-          </div>
+            </>
+          )}
+          {(audioName || videoName || content) && (
+            <div className="px-4 py-3">
+              {audioName && <div className="text-t2 text-xs mb-1">🎙️ {audioName}</div>}
+              {videoName && <div className="text-t2 text-xs mb-1">📹 {videoName}</div>}
+              {content && <p className="text-t1">{content}</p>}
+            </div>
+          )}
+        </div>
         )}
 
         {/* User message action buttons */}

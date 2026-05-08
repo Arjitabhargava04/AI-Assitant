@@ -120,16 +120,14 @@ def call_claude_deep(
 
     # Build user content
     content = []
-    if image_bytes and image_mime:
-        content.append(_encode_image(image_bytes, image_mime))
-        log("CLAUDE", f"Image attached: {len(image_bytes)} bytes", "info")
 
-    # Pass Gemini findings + original question
+    # Pass Gemini findings + original question only
     full_text = ""
     if gemini_findings:
         full_text += f"[Perception Findings]\n{gemini_findings}\n\n"
     full_text += f"[User Question]\n{user_question}"
     content.append({"type": "text", "text": full_text})
+    log("CLAUDE", "Image not — Gemini findings used instead", "info")
 
     base_messages = [{"role": "user", "content": content}]
 

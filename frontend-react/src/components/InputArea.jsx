@@ -54,8 +54,16 @@ export default function InputArea({ onSend, disabled }) {
     setPrevUrls(prev => ({ ...prev, [type]: url }));
     setPlusOpen(false);
   }
+  function toBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload  = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
 
-  function attachFileSmart(e) {
+  async function attachFileSmart(e) {
     const f = e.target.files[0];
     if (!f) return;
 
@@ -66,10 +74,15 @@ export default function InputArea({ onSend, disabled }) {
     const sizeMB = f.size / (1024 * 1024);
     if (sizeMB > limits[type]) return;
 
-    const url = type === 'image' ? URL.createObjectURL(f) : null;
-    if (prevUrls[type]) URL.revokeObjectURL(prevUrls[type]);
-    setFiles(prev => ({ ...prev, [type]: f }));
-    setPrevUrls(prev => ({ ...prev, [type]: url }));
+    if (type === 'image') {
+      const base64 = await toBase64(f);
+      if (prevUrls.image) URL.revokeObjectURL(prevUrls.image);
+      setFiles(prev => ({ ...prev, image: f }));
+      setPrevUrls(prev => ({ ...prev, image: base64 }));
+    } else {
+      setFiles(prev => ({ ...prev, [type]: f }));
+      setPrevUrls(prev => ({ ...prev, [type]: null }));
+    }
     setPlusOpen(false);
   }
 
@@ -148,7 +161,9 @@ export default function InputArea({ onSend, disabled }) {
     setText('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setFiles({ image: null, audio: null, video: null });
-    Object.values(prevUrls).forEach(u => u && URL.revokeObjectURL(u));
+    Object.values(prevUrls).forEach(u => {
+      if (u && u.startsWith('blob:')) URL.revokeObjectURL(u);
+    });
     setPrevUrls({});
   }
 

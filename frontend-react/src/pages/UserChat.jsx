@@ -159,7 +159,7 @@ export default function UserChat() {
       const fd = new FormData();
       fd.append('text', lastUserMsg.content);
       fd.append('tone', lastUserMsg.tone || 'normal');
-      fd.append('chat_id', currentChatId || '');
+      fd.append('chat_id', '');
       const res  = await authFetch('/query', { method: 'POST', body: fd });
       const data = await res.json();
 

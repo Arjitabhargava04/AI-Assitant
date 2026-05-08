@@ -17,7 +17,7 @@ GOOGLE_SEARCH_KEY   = os.getenv("GOOGLE_SEARCH_KEY", "")   # Custom Search API k
 GOOGLE_SEARCH_CX    = os.getenv("GOOGLE_SEARCH_CX", "")    # Custom Search Engine ID
 
 # ── Models ────────────────────────────────────────────────
-# # CLAUDE_MODEL  = os.getenv("CLAUDE_MODEL",  "claude-sonnet-4-6")
+# CLAUDE_MODEL  = os.getenv("CLAUDE_MODEL",  "claude-sonnet-4-6")
 # for testing 
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL",  "claude-haiku-4-5-20251001")
 GEMINI_MODEL  = os.getenv("GEMINI_MODEL",  "gemini-3.1-flash-lite-preview")

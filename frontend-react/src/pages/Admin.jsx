@@ -16,7 +16,15 @@ export default function Admin() {
 
   useEffect(() => { loadSessions(); }, []);
   useEffect(() => { msgsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, typing]);
-
+  
+  async function toBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload  = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
   async function loadSessions() {
     const res  = await authFetch('/chats');
     const data = await res.json();
@@ -74,7 +82,8 @@ export default function Admin() {
       : hasVideo ? '[Video query]'
       : '[Image query]';
 
-    setMessages(prev => [...prev, { id: Date.now()+'_u', role: 'user', content: userContent }]);
+    const imgPreview = files?.image ? await toBase64(files.image) : null;
+    setMessages(prev => [...prev, { id: Date.now()+'_u', role: 'user', content: text, imageUrl: imgPreview }]);
     setTyping(true);
     const sessionId = await ensureSessionId(text);
     try {
@@ -111,7 +120,7 @@ export default function Admin() {
       const fd = new FormData();
       fd.append('text', lastUserMsg.content);
       fd.append('tone', 'normal');
-      fd.append('chat_id', currentSession?.id || '');
+      fd.append('chat_id', '');
       const res  = await authFetch('/query', { method: 'POST', body: fd });
       const data = await res.json();
       const newAnswer = data.answer || 'No response.';
@@ -278,7 +287,7 @@ function TuningView({ messages, typing, msgsEndRef, onSend, onSaveCorrection, is
             ? index === lastUserIndex
             : index === lastAiIndex;
           return m.role === 'user'
-            ? <UserMsg key={m.id} content={m.content} messageId={m.id} isLast={isLast} onEditSave={(newText) => onEditSave && onEditSave(m.id, newText)} />
+            ? <UserMsg key={m.id} content={m.content} messageId={m.id} isLast={isLast} onEditSave={(newText) => onEditSave && onEditSave(m.id, newText)} imageUrl={m.imageUrl} />
             : <AIMsg key={m.id} content={m.content} geminiSummary={m.geminiSummary} questionText={m.questionText} onSaveCorrection={onSaveCorrection} isSuper={isSuper} fresh={m.fresh} messageId={m.id} isLast={isLast} onRegenerate={onRegenerate} />;
         })}
         {typing && <TypingDots />}
@@ -291,11 +300,12 @@ function TuningView({ messages, typing, msgsEndRef, onSend, onSaveCorrection, is
   );
 }
 
-function UserMsg({ content, messageId, isLast, onEditSave }) {
+function UserMsg({ content, messageId, isLast, onEditSave, imageUrl }) {
   const [editing, setEditing]   = useState(false);
   const [editText, setEditText] = useState(content);
   const [copied, setCopied]     = useState(false);
   const [hover, setHover]       = useState(false);
+  const [lightbox, setLightbox] = useState(false);
 
   function copyText() {
     navigator.clipboard.writeText(content);
@@ -337,8 +347,32 @@ function UserMsg({ content, messageId, isLast, onEditSave }) {
             </div>
           </div>
         ) : (
-          <div style={{ background: '#1a1a1a', borderRadius: '12px 12px 2px 12px', padding: '10px 14px', fontSize: 12, color: '#E8E2D9', lineHeight: 1.6 }}>
-            {content}
+          <div style={{ background: '#1a1a1a', borderRadius: '12px 12px 2px 12px', overflow: 'hidden' }}>
+            {imageUrl && (
+              <>
+                {lightbox && (
+                  <div onClick={() => setLightbox(false)}
+                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, cursor: 'zoom-out' }}>
+                    <button onClick={() => setLightbox(false)}
+                      style={{ position: 'absolute', top: 20, right: 20, width: 36, height: 36, borderRadius: '50%', background: '#222', border: '0.5px solid #444', color: '#E8E2D9', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      ✕
+                    </button>
+                    <img src={imageUrl} alt="full"
+                      onClick={e => e.stopPropagation()}
+                      style={{ maxWidth: '90vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 12 }} />
+                  </div>
+                )}
+                <div onClick={() => setLightbox(true)} style={{ cursor: 'zoom-in' }}>
+                  <img src={imageUrl} alt="upload"
+                    style={{ width: '100%', maxWidth: 280, maxHeight: 200, objectFit: 'cover', display: 'block' }} />
+                </div>
+              </>
+            )}
+            {content && (
+              <div style={{ padding: '10px 14px', fontSize: 12, color: '#E8E2D9', lineHeight: 1.6 }}>
+                {content}
+              </div>
+            )}
           </div>
         )}
 
@@ -694,10 +728,13 @@ function FixesView({ isSuper, userId }) {
 // ── SMALL ADMINS VIEW ─────────────────────────────────────
 
 function SmallAdminsView() {
-  const [admins, setAdmins]     = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [profileTab, setProfileTab] = useState('corrections');
-  const [profileData, setProfileData] = useState([]);
+  const [admins, setAdmins]               = useState([]);
+  const [selected, setSelected]           = useState(null);
+  const [profileTab, setProfileTab]       = useState('corrections');
+  const [profileData, setProfileData]     = useState([]);
+  const [selectedSession, setSelectedSession] = useState(null);
+  const [sessionMessages, setSessionMessages] = useState([]);
+  const [loadingMsgs, setLoadingMsgs]     = useState(false);
   const [email, setEmail]           = useState('');
   const [newName, setNewName]       = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -765,14 +802,78 @@ function SmallAdminsView() {
 
   async function switchProfileTab(tab) {
     setProfileTab(tab);
+    setProfileData([]);
     await loadProfileData(selected.id, tab);
+  }
+
+  async function openSession(session) {
+    setSelectedSession(session);
+    setSessionMessages([]);
+    setLoadingMsgs(true);
+    try {
+      const res  = await authFetch(`/chats/${session.id}/messages`);
+      const data = await res.json();
+      const sorted = (data.messages || []).sort((a, b) => {
+        const timeDiff = new Date(a.created_at) - new Date(b.created_at);
+        if (timeDiff !== 0) return timeDiff;
+        if (a.role === 'user' && b.role === 'assistant') return -1;
+        if (a.role === 'assistant' && b.role === 'user') return 1;
+        return 0;
+      });
+      setSessionMessages(sorted);
+    } catch(e) { console.error(e); }
+    finally { setLoadingMsgs(false); }
   }
 
   async function approveFromProfile(id) {
     await authFetch(`/corrections/${id}/approve`, { method: 'PATCH' });
     setProfileData(prev => prev.map(c => c.id === id ? { ...c, status: 'approved' } : c));
   }
+  if (selected && selectedSession) {
+    return (
+      <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, fontSize: 11, color: '#555' }}>
+          <button onClick={() => setSelectedSession(null)}
+            style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: 11 }}>
+            ← {selected.display_name}
+          </button>
+          <span>→</span>
+          <span style={{ color: '#E8E2D9' }}>{selectedSession.title || 'Untitled session'}</span>
+        </div>
 
+        {loadingMsgs && <div style={{ color: '#444', fontSize: 12, padding: 20 }}>Loading messages...</div>}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {sessionMessages.map(m => (
+            <div key={m.id} style={{ display: 'flex', justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start', alignItems: 'flex-start' }}>
+              {m.role === 'assistant' && (
+                <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'linear-gradient(135deg,#C4934A,#8B6A35)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 11, fontFamily: 'serif', flexShrink: 0, marginRight: 8, marginTop: 2 }}>V</div>
+              )}
+              <div style={{
+                maxWidth: '70%',
+                background: m.role === 'user' ? '#1a1a1a' : '#111',
+                border: m.role === 'user' ? 'none' : '0.5px solid #222',
+                borderRadius: m.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
+                padding: '10px 14px', fontSize: 12, color: '#E8E2D9', lineHeight: 1.6,
+              }}>
+                {m.role === 'assistant'
+                  ? <div className="md-content" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.content) }} />
+                  : m.content
+                }
+              </div>
+              {m.role === 'user' && (
+                <div style={{ width: 26, height: 26, borderRadius: '50%', background: '#1a1a1a', border: '0.5px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#888', fontSize: 11, flexShrink: 0, marginLeft: 8, marginTop: 2 }}>👤</div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {!loadingMsgs && sessionMessages.length === 0 && (
+          <div style={{ color: '#444', fontSize: 12, textAlign: 'center', padding: 30 }}>No messages</div>
+        )}
+      </div>
+    );
+  }
   if (selected) {
     return (
       <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
@@ -794,13 +895,14 @@ function SmallAdminsView() {
           ))}
         </div>
 
-        {profileTab === 'corrections' && profileData.map(c => (
+         {profileTab === 'corrections' && profileData.map(c => (
+          !c.correct_answer ? null :
           <div key={c.id} style={{ background: '#111', border: '0.5px solid #222', borderRadius: 10, padding: '12px 14px', marginBottom: 8 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
               <div style={{ fontSize: 11, color: '#C4934A' }}>Q: {(c.question_text || c.gemini_summary || '').substring(0, 70)}</div>
               <span style={{ fontSize: 9, padding: '2px 8px', borderRadius: 20, background: c.status === 'approved' ? '#0a1a0a' : '#1a1200', color: c.status === 'approved' ? '#4a9a6a' : '#C4934A', border: `0.5px solid ${c.status === 'approved' ? '#4a9a6a44' : '#C4934A44'}` }}>{c.status}</span>
             </div>
-            <div style={{ fontSize: 11, color: '#4a9a6a', lineHeight: 1.5 }}>{c.correct_answer.substring(0, 100)}...</div>
+            <div style={{ fontSize: 11, color: '#4a9a6a', lineHeight: 1.5 }}>{(c.correct_answer || '').substring(0, 100)}...</div>
             {c.status === 'pending' && (
               <div style={{ marginTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
                 <button onClick={() => approveFromProfile(c.id)} style={{ fontSize: 10, padding: '3px 10px', borderRadius: 6, border: '0.5px solid #4a9a6a44', background: '#0a1a0a', color: '#4a9a6a', cursor: 'pointer' }}>Approve</button>
@@ -810,7 +912,10 @@ function SmallAdminsView() {
         ))}
 
         {profileTab === 'sessions' && profileData.map(s => (
-          <div key={s.id} style={{ background: '#111', border: '0.5px solid #222', borderRadius: 10, padding: '10px 14px', marginBottom: 6 }}>
+          <div key={s.id} onClick={() => openSession(s)}
+            style={{ background: '#111', border: '0.5px solid #222', borderRadius: 10, padding: '10px 14px', marginBottom: 6, cursor: 'pointer' }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = '#C4934A44'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = '#222'}>
             <div style={{ fontSize: 12, color: '#E8E2D9' }}>{s.title || 'Untitled session'}</div>
             <div style={{ fontSize: 10, color: '#444', marginTop: 3 }}>{new Date(s.updated_at).toLocaleDateString()}</div>
           </div>
