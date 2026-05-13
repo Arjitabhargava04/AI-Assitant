@@ -215,7 +215,22 @@ async def query_stream(
     # Save user message before streaming
     if chat_id:
         try:
-            save_message(chat_id, user["id"], "user", text, "", "text")
+            # Build content with media placeholders + text
+            lines = []
+            if image_bytes: lines.append("[Image uploaded]")
+            if audio_bytes: lines.append("[Audio uploaded]")
+            if video_bytes: lines.append("[Video uploaded]")
+            if text and text.strip(): lines.append(text)
+            user_content = "\n".join(lines) if lines else ""
+
+            # Detect input_type
+            input_type = "text"
+            if image_bytes and (audio_bytes or video_bytes): input_type = "mixed"
+            elif image_bytes: input_type = "image"
+            elif audio_bytes: input_type = "audio"
+            elif video_bytes: input_type = "video"
+
+            save_message(chat_id, user["id"], "user", user_content, "", input_type)
         except Exception as e:
             log("APP", f"Save user msg failed: {e}", "warn")
 
@@ -236,7 +251,7 @@ async def query_stream(
         # Save AI message after stream complete
         if chat_id and full_answer:
             try:
-                save_message(chat_id, user["id"], "assistant", full_answer, "", "text")
+                save_message(chat_id, user["id"], "assistant", full_answer, "text")
             except Exception as e:
                 log("APP", f"Save AI msg failed: {e}", "warn")
 

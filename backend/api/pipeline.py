@@ -13,8 +13,6 @@ TTS is removed from pipeline — handled per-message in /speak endpoint.
 
 import asyncio
 from api.router import InputPayload, detect_route, validate_payload
-from llm.gemini_client import call_gemini_direct, call_gemini_perception, extract_av_context
-from llm.claude_client import call_claude_deep
 from vision.image_search import reverse_image_search
 from vision.web_images import fetch_and_verify_images, build_image_search_query
 from utils.image_intent import detect_image_intent
@@ -22,7 +20,7 @@ from config.settings import DEEP_TONES
 from utils.debug import log, log_separator
 from corrections.injector import find_relevant_correction, build_correction_prompt_prefix
 from db.queries import save_message, get_recent_messages
-from llm.gemini_client import call_gemini_direct, call_gemini_perception, call_gemini_direct_stream
+from llm.gemini_client import call_gemini_direct, call_gemini_perception, call_gemini_direct_stream,extract_av_context
 from llm.claude_client import call_claude_deep, call_claude_deep_stream
 
 async def handle_query(payload: InputPayload) -> dict:
@@ -455,7 +453,6 @@ async def run_pipeline_stream(payload, user_email: str = "", history: list = Non
         log("PIPELINE", "DIRECT PATH | Streaming", "info")
 
         # Stream from Gemini
-                # Stream from Gemini
         async for chunk in call_gemini_direct_stream(
             text=payload.text or "",
             image_bytes=payload.image_bytes,

@@ -144,7 +144,7 @@ export function UserBubble({ content, imageUrl, audioName, videoName, messageId,
             <div className="px-4 py-3">
               {audioName && <div className="text-t2 text-xs mb-1">🎙️ {audioName}</div>}
               {videoName && <div className="text-t2 text-xs mb-1">📹 {videoName}</div>}
-              {content && <p className="text-t1">{content}</p>}
+              {content && <p className="text-t1" style={{ whiteSpace: 'pre-line' }}>{content}</p>}
             </div>
           )}
         </div>

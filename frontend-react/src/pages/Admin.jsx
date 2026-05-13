@@ -88,13 +88,22 @@ export default function Admin() {
     setLastSentHasAudio(hasAudio);
     setLastSentHasVideo(hasVideo);
 
+    // Build display content with placeholders + text (matches backend)
+    const lines = [];
+    if (hasImage) lines.push('[Image uploaded]');
+    if (hasAudio) lines.push('[Audio uploaded]');
+    if (hasVideo) lines.push('[Video uploaded]');
+    if (hasText)  lines.push(text);
+    const displayContent = lines.join('\n');
+
+    // questionText for correction (no placeholders)
     const userContent = hasText ? text
       : hasAudio ? '[Audio query]'
       : hasVideo ? '[Video query]'
       : '[Image query]';
 
     const imgPreview = files?.image ? await toBase64(files.image) : null;
-    setMessages(prev => [...prev, { id: Date.now()+'_u', role: 'user', content: text, imageUrl: imgPreview }]);
+    setMessages(prev => [...prev, { id: Date.now()+'_u', role: 'user', content: displayContent, imageUrl: imgPreview }]);
     setTyping(true);
     const sessionId = await ensureSessionId(text);
 
@@ -187,26 +196,101 @@ export default function Admin() {
     const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
     const lastAiMsg   = [...messages].reverse().find(m => m.role === 'assistant');
     if (!lastUserMsg || typing) return;
-    setMessages(prev => prev.filter(m => m.id !== lastAiMsg?.id));
+
+    const oldAiId = lastAiMsg?.id;
+    setMessages(prev => prev.filter(m => m.id !== oldAiId));
+
+    setLastSentTone('normal');
+    setLastSentHasImage(false);
+    setLastSentHasAudio(false);
+    setLastSentHasVideo(false);
     setTyping(true);
+
     try {
       const fd = new FormData();
       fd.append('text', lastUserMsg.content);
       fd.append('tone', 'normal');
       fd.append('chat_id', '');
-      const res  = await authFetch('/query', { method: 'POST', body: fd });
-      const data = await res.json();
-      const newAnswer = data.answer || 'No response.';
-      if (lastAiMsg?.id && currentSession?.id) {
-        await authFetch(`/messages/${lastAiMsg.id}`, {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: newAnswer }),
+
+      const newAiId = Date.now() + '_a';
+      let firstChunkReceived = false;
+
+      const res = await authFetch('/query/stream', { method: 'POST', body: fd });
+
+      const reader   = res.body.getReader();
+      const decoder  = new TextDecoder();
+      let buffer     = '';
+      let fullText   = '';
+      let revealedText = '';
+      let streamDone = false;
+
+      const REVEAL_SPEED = 15;
+      const CHARS_PER_TICK = 2;
+
+      const revealInterval = setInterval(() => {
+        if (revealedText.length < fullText.length) {
+          const nextLen = Math.min(revealedText.length + CHARS_PER_TICK, fullText.length);
+          revealedText = fullText.substring(0, nextLen);
+
+          if (!firstChunkReceived) {
+            firstChunkReceived = true;
+            setTyping(false);
+            setStreamingMsgId(newAiId);
+            setMessages(prev => [...prev, {
+              id: newAiId, role: 'assistant',
+              content: revealedText,
+              geminiSummary: revealedText,
+              questionText: lastUserMsg.content,
+              tone: 'normal', fresh: true,
+            }]);
+          } else {
+            setMessages(prev => prev.map(m =>
+              m.id === newAiId ? { ...m, content: revealedText, geminiSummary: revealedText } : m
+            ));
+          }
+        } else if (streamDone) {
+          clearInterval(revealInterval);
+        }
+      }, REVEAL_SPEED);
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) { streamDone = true; break; }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const obj = JSON.parse(line);
+              if (obj.type === 'text') fullText += obj.data;
+            } catch (e) { console.error('Parse error:', e); }
+          }
+        }
+      } finally {
+        const waitForReveal = () => new Promise(resolve => {
+          const check = setInterval(() => {
+            if (revealedText.length >= fullText.length) {
+              clearInterval(check);
+              clearInterval(revealInterval);
+              resolve();
+            }
+          }, 50);
         });
+        await waitForReveal();
+        setStreamingMsgId(null);
+
+        if (oldAiId && currentSession?.id && fullText) {
+          await authFetch(`/messages/${oldAiId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: fullText }),
+          });
+        }
       }
-      setMessages(prev => [...prev, {
-        id: lastAiMsg?.id || Date.now()+'_a', role: 'assistant',
-        content: newAnswer, fresh: true,
-      }]);
     } catch {
       setMessages(prev => [...prev, { id: Date.now()+'_e', role: 'assistant', content: 'Error.', fresh: false }]);
     } finally { setTyping(false); }
@@ -215,26 +299,100 @@ export default function Admin() {
   async function handleEditSave(messageId, newText) {
     setMessages(prev => prev.map(m => m.id === messageId ? { ...m, content: newText } : m));
     const lastAiMsg = [...messages].reverse().find(m => m.role === 'assistant');
-    if (lastAiMsg) setMessages(prev => prev.filter(m => m.id !== lastAiMsg.id));
+    const oldAiId   = lastAiMsg?.id;
+    if (oldAiId) setMessages(prev => prev.filter(m => m.id !== oldAiId));
+
+    setLastSentTone('normal');
+    setLastSentHasImage(false);
+    setLastSentHasAudio(false);
+    setLastSentHasVideo(false);
     setTyping(true);
+
     try {
       const fd = new FormData();
       fd.append('text', newText);
       fd.append('tone', 'normal');
-      fd.append('chat_id', currentSession?.id || '');
-      const res  = await authFetch('/query', { method: 'POST', body: fd });
-      const data = await res.json();
-      const newAnswer = data.answer || 'No response.';
-      if (lastAiMsg?.id) {
-        await authFetch(`/messages/${lastAiMsg.id}`, {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: newAnswer }),
+      fd.append('chat_id', '');
+
+      const newAiId = Date.now() + '_a';
+      let firstChunkReceived = false;
+
+      const res = await authFetch('/query/stream', { method: 'POST', body: fd });
+
+      const reader   = res.body.getReader();
+      const decoder  = new TextDecoder();
+      let buffer     = '';
+      let fullText   = '';
+      let revealedText = '';
+      let streamDone = false;
+
+      const REVEAL_SPEED = 15;
+      const CHARS_PER_TICK = 2;
+
+      const revealInterval = setInterval(() => {
+        if (revealedText.length < fullText.length) {
+          const nextLen = Math.min(revealedText.length + CHARS_PER_TICK, fullText.length);
+          revealedText = fullText.substring(0, nextLen);
+
+          if (!firstChunkReceived) {
+            firstChunkReceived = true;
+            setTyping(false);
+            setStreamingMsgId(newAiId);
+            setMessages(prev => [...prev, {
+              id: newAiId, role: 'assistant',
+              content: revealedText,
+              geminiSummary: revealedText,
+              questionText: newText,
+              tone: 'normal', fresh: true,
+            }]);
+          } else {
+            setMessages(prev => prev.map(m =>
+              m.id === newAiId ? { ...m, content: revealedText, geminiSummary: revealedText } : m
+            ));
+          }
+        } else if (streamDone) {
+          clearInterval(revealInterval);
+        }
+      }, REVEAL_SPEED);
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) { streamDone = true; break; }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const obj = JSON.parse(line);
+              if (obj.type === 'text') fullText += obj.data;
+            } catch (e) { console.error('Parse error:', e); }
+          }
+        }
+      } finally {
+        const waitForReveal = () => new Promise(resolve => {
+          const check = setInterval(() => {
+            if (revealedText.length >= fullText.length) {
+              clearInterval(check);
+              clearInterval(revealInterval);
+              resolve();
+            }
+          }, 50);
         });
+        await waitForReveal();
+        setStreamingMsgId(null);
+
+        if (oldAiId && currentSession?.id && fullText) {
+          await authFetch(`/messages/${oldAiId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: fullText }),
+          });
+        }
       }
-      setMessages(prev => [...prev, {
-        id: lastAiMsg?.id || Date.now()+'_a', role: 'assistant',
-        content: newAnswer, fresh: true,
-      }]);
     } catch {
       setMessages(prev => [...prev, { id: Date.now()+'_e', role: 'assistant', content: 'Error.', fresh: false }]);
     } finally { setTyping(false); }
@@ -449,7 +607,7 @@ function UserMsg({ content, messageId, isLast, onEditSave, imageUrl }) {
               </>
             )}
             {content && (
-              <div style={{ padding: '10px 14px', fontSize: 12, color: '#E8E2D9', lineHeight: 1.6 }}>
+              <div style={{ padding: '10px 14px', fontSize: 12, color: '#E8E2D9', lineHeight: 1.6, whiteSpace: 'pre-line' }}>
                 {content}
               </div>
             )}

@@ -242,34 +242,99 @@ export default function UserChat() {
     const lastAiMsg   = [...messages].reverse().find(m => m.role === 'assistant');
     if (!lastUserMsg || typing) return;
 
-    setMessages(prev => prev.filter(m => m.id !== lastAiMsg?.id));
+    const oldAiId = lastAiMsg?.id;
+    const useTone = lastUserMsg.tone || 'normal';
+    setMessages(prev => prev.filter(m => m.id !== oldAiId));
+
+    setLastSentTone(useTone);
+    setLastSentHasImage(false);
+    setLastSentHasAudio(false);
+    setLastSentHasVideo(false);
     setTyping(true);
 
     try {
       const fd = new FormData();
       fd.append('text', lastUserMsg.content);
-      fd.append('tone', lastUserMsg.tone || 'normal');
+      fd.append('tone', useTone);
       fd.append('chat_id', '');
-      const res  = await authFetch('/query', { method: 'POST', body: fd });
-      const data = await res.json();
 
-      const newAnswer = data.answer || 'No response.';
+      const newAiId = Date.now() + '_a';
+      let firstChunkReceived = false;
 
-      if (lastAiMsg?.id && currentChatId) {
-        await authFetch(`/messages/${lastAiMsg.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: newAnswer }),
+      const res = await authFetch('/query/stream', { method: 'POST', body: fd });
+
+      const reader   = res.body.getReader();
+      const decoder  = new TextDecoder();
+      let buffer     = '';
+      let fullText   = '';
+      let revealedText = '';
+      let streamDone = false;
+
+      const REVEAL_SPEED = 15;
+      const CHARS_PER_TICK = 2;
+
+      const revealInterval = setInterval(() => {
+        if (revealedText.length < fullText.length) {
+          const nextLen = Math.min(revealedText.length + CHARS_PER_TICK, fullText.length);
+          revealedText = fullText.substring(0, nextLen);
+
+          if (!firstChunkReceived) {
+            firstChunkReceived = true;
+            setTyping(false);
+            setStreamingMsgId(newAiId);
+            setMessages(prev => [...prev, {
+              id: newAiId, role: 'assistant',
+              content: revealedText,
+              tone: useTone, images: [],
+            }]);
+          } else {
+            setMessages(prev => prev.map(m =>
+              m.id === newAiId ? { ...m, content: revealedText } : m
+            ));
+          }
+        } else if (streamDone) {
+          clearInterval(revealInterval);
+        }
+      }, REVEAL_SPEED);
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) { streamDone = true; break; }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const obj = JSON.parse(line);
+              if (obj.type === 'text') fullText += obj.data;
+            } catch (e) { console.error('Parse error:', e); }
+          }
+        }
+      } finally {
+        const waitForReveal = () => new Promise(resolve => {
+          const check = setInterval(() => {
+            if (revealedText.length >= fullText.length) {
+              clearInterval(check);
+              clearInterval(revealInterval);
+              resolve();
+            }
+          }, 50);
         });
-      }
+        await waitForReveal();
+        setStreamingMsgId(null);
 
-      setMessages(prev => [...prev, {
-        id:      lastAiMsg?.id || Date.now() + '_a',
-        role:    'assistant',
-        content: newAnswer,
-        tone:    lastUserMsg.tone || 'normal',
-        images:  data.images || [],
-      }]);
+        if (oldAiId && currentChatId && fullText) {
+          await authFetch(`/messages/${oldAiId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: fullText }),
+          });
+        }
+      }
     } catch {
       setMessages(prev => [...prev, {
         id: Date.now() + '_err', role: 'assistant',
@@ -283,32 +348,100 @@ export default function UserChat() {
       m.id === messageId ? { ...m, content: newText } : m
     ));
     const lastAiMsg = [...messages].reverse().find(m => m.role === 'assistant');
-    if (lastAiMsg) {
-      setMessages(prev => prev.filter(m => m.id !== lastAiMsg.id));
+    const oldAiId   = lastAiMsg?.id;
+    if (oldAiId) {
+      setMessages(prev => prev.filter(m => m.id !== oldAiId));
     }
+
+    setLastSentTone('normal');
+    setLastSentHasImage(false);
+    setLastSentHasAudio(false);
+    setLastSentHasVideo(false);
     setTyping(true);
+
     try {
       const fd = new FormData();
       fd.append('text', newText);
       fd.append('tone', 'normal');
-      fd.append('chat_id', currentChatId || '');
-      const res  = await authFetch('/query', { method: 'POST', body: fd });
-      const data = await res.json();
-      const newAnswer = data.answer || 'No response.';
+      fd.append('chat_id', '');
 
-      if (lastAiMsg?.id) {
-        await authFetch(`/messages/${lastAiMsg.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: newAnswer }),
+      const newAiId = Date.now() + '_a';
+      let firstChunkReceived = false;
+
+      const res = await authFetch('/query/stream', { method: 'POST', body: fd });
+
+      const reader   = res.body.getReader();
+      const decoder  = new TextDecoder();
+      let buffer     = '';
+      let fullText   = '';
+      let revealedText = '';
+      let streamDone = false;
+
+      const REVEAL_SPEED = 15;
+      const CHARS_PER_TICK = 2;
+
+      const revealInterval = setInterval(() => {
+        if (revealedText.length < fullText.length) {
+          const nextLen = Math.min(revealedText.length + CHARS_PER_TICK, fullText.length);
+          revealedText = fullText.substring(0, nextLen);
+
+          if (!firstChunkReceived) {
+            firstChunkReceived = true;
+            setTyping(false);
+            setStreamingMsgId(newAiId);
+            setMessages(prev => [...prev, {
+              id: newAiId, role: 'assistant',
+              content: revealedText,
+              tone: 'normal', images: [],
+            }]);
+          } else {
+            setMessages(prev => prev.map(m =>
+              m.id === newAiId ? { ...m, content: revealedText } : m
+            ));
+          }
+        } else if (streamDone) {
+          clearInterval(revealInterval);
+        }
+      }, REVEAL_SPEED);
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) { streamDone = true; break; }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const obj = JSON.parse(line);
+              if (obj.type === 'text') fullText += obj.data;
+            } catch (e) { console.error('Parse error:', e); }
+          }
+        }
+      } finally {
+        const waitForReveal = () => new Promise(resolve => {
+          const check = setInterval(() => {
+            if (revealedText.length >= fullText.length) {
+              clearInterval(check);
+              clearInterval(revealInterval);
+              resolve();
+            }
+          }, 50);
         });
-      }
+        await waitForReveal();
+        setStreamingMsgId(null);
 
-      setMessages(prev => [...prev, {
-        id: lastAiMsg?.id || Date.now() + '_a',
-        role: 'assistant', content: newAnswer,
-        tone: 'normal', images: data.images || [],
-      }]);
+        if (oldAiId && currentChatId && fullText) {
+          await authFetch(`/messages/${oldAiId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: fullText }),
+          });
+        }
+      }
     } catch {
       setMessages(prev => [...prev, {
         id: Date.now() + '_err', role: 'assistant',
