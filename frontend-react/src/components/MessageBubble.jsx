@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { authFetch, renderMarkdown } from '../utils/api';
 
 let globalAudio  = null;
@@ -168,7 +168,7 @@ export function UserBubble({ content, imageUrl, audioName, videoName, messageId,
   );
 }
 
-export function AIBubble({ content, tone, images, messageId, isLast, onRegenerate }) {
+export function AIBubble({ content, tone, images, messageId, isLast, onRegenerate, isStreaming }) {
   const [liked, setLiked]         = useState(false);
   const [disliked, setDisliked]   = useState(false);
   const [copied, setCopied]       = useState(false);
@@ -252,7 +252,10 @@ export function AIBubble({ content, tone, images, messageId, isLast, onRegenerat
           )}
         </div>
         <div className="px-4 py-3 bg-abg border border-b1 rounded-2xl rounded-tl-sm text-sm leading-relaxed">
-          <div className="md-content" dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
+          <div className="md-content">
+            <span dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
+            {isStreaming && <span className="stream-cursor"></span>}
+          </div>
           {images && images.length > 0 && (
             <div className="mt-3 grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(130px,1fr))' }}>
               {images.map((url, i) => (
@@ -312,6 +315,133 @@ export function TypingIndicator() {
         <div className="w-1.5 h-1.5 rounded-full bg-accent dot" />
         <div className="w-1.5 h-1.5 rounded-full bg-accent dot" />
         <div className="w-1.5 h-1.5 rounded-full bg-accent dot" />
+      </div>
+    </div>
+  );
+}
+
+export function ThinkingIndicator({ tone = 'normal', hasImage = false, hasAudio = false, hasVideo = false }) {
+  const [visibleSteps, setVisibleSteps] = useState(0);
+
+  // Pick steps based on context
+  let steps;
+  if (hasImage) {
+    steps = [
+      'Analyzing your image',
+      'Understanding content',
+      'Thinking',
+      'Generating answer',
+    ];
+  } else if (hasAudio || hasVideo) {
+    steps = [
+      'Processing your media',
+      'Understanding content',
+      'Thinking deeply',
+      'Deep analysis',
+    ];
+  } else if (tone === 'researcher' || tone === 'formal') {
+    steps = [
+      'Understanding your question',
+      'Thinking',
+      'Thinking deeply',
+      'Deep analysis',
+      'Going more deeper',
+    ];
+  } else {
+    steps = [
+      'Understanding your question',
+      'Thinking deeply',
+      'Understanding',
+      'Generating answer',
+    ];
+  }
+
+  useEffect(() => {
+    setVisibleSteps(1);
+    const interval = setInterval(() => {
+      setVisibleSteps(prev => {
+        if (prev >= steps.length) return prev;
+        return prev + 1;
+      });
+    }, 1500);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="flex gap-2">
+      <div className="w-7 h-7 rounded-full flex items-center justify-center font-serif font-semibold text-white text-sm flex-shrink-0"
+           style={{ background: 'linear-gradient(135deg,#C4934A,#8B6A35)' }}>
+        V
+      </div>
+      <div style={{
+        background: 'rgba(196,147,74,0.04)',
+        border: '0.5px solid rgba(196,147,74,0.15)',
+        borderRadius: 14,
+        padding: '14px 18px',
+        minWidth: 280,
+      }}>
+        {steps.map((step, idx) => {
+          if (idx >= visibleSteps) return null;
+          const isActive = idx === visibleSteps - 1;
+          const isDone   = idx < visibleSteps - 1;
+
+          return (
+            <div key={idx}
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 12,
+                opacity: 0,
+                animation: 'thinkFadeIn 0.4s ease-out forwards',
+                animationDelay: `${(idx - (visibleSteps - 1)) * 0.1}s`,
+                marginBottom: idx === steps.length - 1 ? 0 : 8,
+              }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, paddingTop: 2 }}>
+                {isDone && (
+                  <div style={{
+                    width: 10, height: 10, borderRadius: '50%',
+                    background: '#C4934A',
+                    boxShadow: '0 0 8px rgba(196,147,74,0.4)',
+                  }} />
+                )}
+                {isActive && (
+                  <div style={{
+                    width: 12, height: 12, borderRadius: '50%',
+                    border: '1.5px solid rgba(196,147,74,0.2)',
+                    borderTopColor: '#C4934A',
+                    animation: 'thinkSpin 0.8s linear infinite',
+                    boxShadow: '0 0 12px rgba(196,147,74,0.5)',
+                  }} />
+                )}
+                {idx < steps.length - 1 && idx < visibleSteps - 1 && (
+                  <div style={{
+                    width: 1.5,
+                    height: 18,
+                    marginTop: 4,
+                    background: 'linear-gradient(180deg, #C4934A, rgba(196,147,74,0.2))',
+                  }} />
+                )}
+                {idx < steps.length - 1 && idx === visibleSteps - 1 && (
+                  <div style={{
+                    width: 1.5,
+                    height: 18,
+                    marginTop: 4,
+                    background: 'rgba(196,147,74,0.15)',
+                  }} />
+                )}
+              </div>
+              <div style={{
+                fontSize: 13,
+                color: isActive ? '#E8E2D9' : '#666',
+                fontWeight: isActive ? 500 : 400,
+                lineHeight: 1.4,
+                paddingTop: 0,
+              }}>
+                {step}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

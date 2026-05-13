@@ -47,3 +47,36 @@ body { background: #0D0D0D; color: #E8E2D9; font-family: 'Inter', sans-serif; ov
 .flex.gap-2.flex-row-reverse.group:hover .msg-actions {
   opacity: 1 !important;
 }
+
+@keyframes thinkFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes thinkSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes cursorPulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50%      { opacity: 1;   transform: scale(1); }
+}
+
+.stream-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #C4934A;
+  margin-left: 4px;
+  vertical-align: middle;
+  animation: cursorPulse 1s ease-in-out infinite;
+  box-shadow: 0 0 8px rgba(196,147,74,0.6);
+}

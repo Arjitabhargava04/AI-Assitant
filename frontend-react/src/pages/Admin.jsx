@@ -3,6 +3,7 @@ const audioCache = new Map();
 import { authFetch, renderMarkdown } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import InputArea from '../components/InputArea';
+import { ThinkingIndicator } from '../components/MessageBubble';
 
 export default function Admin() {
   const { user, logout } = useAuth();
@@ -10,8 +11,13 @@ export default function Admin() {
   const [view, setView]       = useState('tuning');
   const [sessions, setSessions] = useState([]);
   const [currentSession, setCurrentSession] = useState(null);
-  const [messages, setMessages]   = useState([]);
-  const [typing, setTyping]       = useState(false);
+  const [messages, setMessages]               = useState([]);
+  const [typing, setTyping]                   = useState(false);
+  const [streamingMsgId, setStreamingMsgId]   = useState(null);
+  const [lastSentTone, setLastSentTone]       = useState('normal');
+  const [lastSentHasImage, setLastSentHasImage] = useState(false);
+  const [lastSentHasAudio, setLastSentHasAudio] = useState(false);
+  const [lastSentHasVideo, setLastSentHasVideo] = useState(false);
   const msgsEndRef = useRef(null);
 
   useEffect(() => { loadSessions(); }, []);
@@ -77,6 +83,11 @@ export default function Admin() {
 
     if (typing || (!hasText && !hasAudio && !hasVideo && !hasImage)) return;
 
+    setLastSentTone(tone);
+    setLastSentHasImage(hasImage);
+    setLastSentHasAudio(hasAudio);
+    setLastSentHasVideo(hasVideo);
+
     const userContent = hasText ? text
       : hasAudio ? '[Audio query]'
       : hasVideo ? '[Video query]'
@@ -86,6 +97,7 @@ export default function Admin() {
     setMessages(prev => [...prev, { id: Date.now()+'_u', role: 'user', content: text, imageUrl: imgPreview }]);
     setTyping(true);
     const sessionId = await ensureSessionId(text);
+
     try {
       const fd = new FormData();
       fd.append('text', text);
@@ -95,16 +107,77 @@ export default function Admin() {
       if (files.audio) fd.append('audio', files.audio);
       if (files.video) fd.append('video', files.video);
 
-      const res  = await authFetch('/query', { method: 'POST', body: fd });
-      const data = await res.json();
-      setMessages(prev => [...prev, {
-        id: Date.now()+'_a', role: 'assistant',
-        content: data.answer || 'No response.',
-        geminiSummary: data.answer || '',
-        questionText: userContent,
-        tone,
-        fresh: true,
-      }]);
+      const aiMsgId = Date.now() + '_a';
+      let firstChunkReceived = false;
+
+      const res = await authFetch('/query/stream', { method: 'POST', body: fd });
+
+      const reader   = res.body.getReader();
+      const decoder  = new TextDecoder();
+      let buffer     = '';
+      let fullText   = '';
+      let revealedText = '';
+      let streamDone = false;
+
+      const REVEAL_SPEED   = 15;
+      const CHARS_PER_TICK = 2;
+
+      const revealInterval = setInterval(() => {
+        if (revealedText.length < fullText.length) {
+          const nextLen = Math.min(revealedText.length + CHARS_PER_TICK, fullText.length);
+          revealedText = fullText.substring(0, nextLen);
+
+          if (!firstChunkReceived) {
+            firstChunkReceived = true;
+            setTyping(false);
+            setStreamingMsgId(aiMsgId);
+            setMessages(prev => [...prev, {
+              id: aiMsgId, role: 'assistant',
+              content: revealedText,
+              geminiSummary: revealedText,
+              questionText: userContent,
+              tone, fresh: true,
+            }]);
+          } else {
+            setMessages(prev => prev.map(m =>
+              m.id === aiMsgId ? { ...m, content: revealedText, geminiSummary: revealedText } : m
+            ));
+          }
+        } else if (streamDone) {
+          clearInterval(revealInterval);
+        }
+      }, REVEAL_SPEED);
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) { streamDone = true; break; }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const obj = JSON.parse(line);
+              if (obj.type === 'text') fullText += obj.data;
+            } catch (e) { console.error('Parse error:', e); }
+          }
+        }
+      } finally {
+        const waitForReveal = () => new Promise(resolve => {
+          const check = setInterval(() => {
+            if (revealedText.length >= fullText.length) {
+              clearInterval(check);
+              clearInterval(revealInterval);
+              resolve();
+            }
+          }, 50);
+        });
+        await waitForReveal();
+        setStreamingMsgId(null);
+      }
     } catch { 
       setMessages(prev => [...prev, { id: Date.now()+'_e', role: 'assistant', content: 'Error connecting.' }]);
     } finally { setTyping(false); }
@@ -256,7 +329,7 @@ export default function Admin() {
         </div>
 
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          {view === 'tuning' && <TuningView messages={messages} typing={typing} msgsEndRef={msgsEndRef} onSend={handleSend} onSaveCorrection={saveCorrection} isSuper={isSuper} onRegenerate={handleRegenerate} onEditSave={handleEditSave} />}
+          {view === 'tuning' && <TuningView messages={messages} typing={typing} msgsEndRef={msgsEndRef} onSend={handleSend} onSaveCorrection={saveCorrection} isSuper={isSuper} onRegenerate={handleRegenerate} onEditSave={handleEditSave} lastSentTone={lastSentTone} lastSentHasImage={lastSentHasImage} lastSentHasAudio={lastSentHasAudio} lastSentHasVideo={lastSentHasVideo} streamingMsgId={streamingMsgId} />}
           {view === 'fixes'        && <FixesView isSuper={isSuper} userId={user?.userId} />}
           {view === 'small-admins' && isSuper && <SmallAdminsView />}
           {view === 'users'        && isSuper && <UsersView />}
@@ -269,7 +342,7 @@ export default function Admin() {
 
 // ── TUNING VIEW ───────────────────────────────────────────
 
-function TuningView({ messages, typing, msgsEndRef, onSend, onSaveCorrection, isSuper, onRegenerate, onEditSave }) {
+function TuningView({ messages, typing, msgsEndRef, onSend, onSaveCorrection, isSuper, onRegenerate, onEditSave, lastSentTone, lastSentHasImage, lastSentHasAudio, lastSentHasVideo, streamingMsgId }) {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -288,9 +361,16 @@ function TuningView({ messages, typing, msgsEndRef, onSend, onSaveCorrection, is
             : index === lastAiIndex;
           return m.role === 'user'
             ? <UserMsg key={m.id} content={m.content} messageId={m.id} isLast={isLast} onEditSave={(newText) => onEditSave && onEditSave(m.id, newText)} imageUrl={m.imageUrl} />
-            : <AIMsg key={m.id} content={m.content} geminiSummary={m.geminiSummary} questionText={m.questionText} onSaveCorrection={onSaveCorrection} isSuper={isSuper} fresh={m.fresh} messageId={m.id} isLast={isLast} onRegenerate={onRegenerate} />;
+            : <AIMsg key={m.id} content={m.content} geminiSummary={m.geminiSummary} questionText={m.questionText} onSaveCorrection={onSaveCorrection} isSuper={isSuper} fresh={m.fresh} messageId={m.id} isLast={isLast} onRegenerate={onRegenerate} isStreaming={m.id === streamingMsgId} />;
         })}
-        {typing && <TypingDots />}
+        {typing && (
+          <ThinkingIndicator
+            tone={lastSentTone || 'normal'}
+            hasImage={lastSentHasImage}
+            hasAudio={lastSentHasAudio}
+            hasVideo={lastSentHasVideo}
+          />
+        )}
         <div ref={msgsEndRef} />
       </div>
       <div style={{ padding: '0 16px 12px', flexShrink: 0 }}>
@@ -393,7 +473,7 @@ function UserMsg({ content, messageId, isLast, onEditSave, imageUrl }) {
   );
 }
 
-function AIMsg({ content, geminiSummary, questionText, onSaveCorrection, isSuper, fresh, messageId, isLast, onRegenerate }) {
+function AIMsg({ content, geminiSummary, questionText, onSaveCorrection, isSuper, fresh, messageId, isLast, onRegenerate, isStreaming }) {
   const [corrOpen, setCorrOpen]           = useState(false);
   const [corrText, setCorrText]           = useState('');
   const [saved, setSaved]                 = useState(false);
@@ -464,8 +544,10 @@ function AIMsg({ content, geminiSummary, questionText, onSaveCorrection, isSuper
       onMouseLeave={() => setHover(false)}>
       <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#C4934A,#8B6A35)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 12, fontFamily: 'serif', flexShrink: 0, marginTop: 2 }}>V</div>
       <div style={{ flex: 1 }}>
-        <div style={{ background: '#111', border: '0.5px solid #222', borderRadius: '12px 12px 12px 2px', padding: '10px 14px', fontSize: 12, color: '#E8E2D9', lineHeight: 1.6 }}
-          dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
+        <div style={{ background: '#111', border: '0.5px solid #222', borderRadius: '12px 12px 12px 2px', padding: '10px 14px', fontSize: 12, color: '#E8E2D9', lineHeight: 1.6 }}>
+          <span dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
+          {isStreaming && <span className="stream-cursor"></span>}
+        </div>
 
         {/* Action buttons */}
         <div style={{ display: 'flex', gap: 4, marginTop: 6, opacity: hover ? 1 : 0, transition: 'opacity 0.15s' }}>

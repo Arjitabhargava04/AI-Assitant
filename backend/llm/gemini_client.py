@@ -197,3 +197,70 @@ def extract_av_context(
     log("GEMINI-AV", f"Extracted {len(result)} chars", "success")
     return result
 
+async def call_gemini_direct_stream(
+    text: str = "",
+    image_bytes: bytes | None = None,
+    image_mime: str | None = None,
+    audio_bytes: bytes | None = None,
+    audio_mime: str | None = None,
+    video_bytes: bytes | None = None,
+    video_mime: str | None = None,
+    tone: str = "normal",
+    correction_prefix: str = "",
+    history: list | None = None,
+):
+    """
+    Gemini direct call — STREAMING version.
+    Yields text chunks as they arrive.
+    """
+    from utils.debug import log, log_separator
+    from llm.prompts import get_gemini_system_prompt
+
+    log_separator("GEMINI DIRECT STREAM")
+    lang = detect_language(text)
+    log("LANG", f"Detected: {lang.upper()}", "info")
+
+    system_prompt = get_gemini_system_prompt(tone, lang)
+    if correction_prefix:
+        system_prompt = correction_prefix + "\n\n" + system_prompt
+        log("GEMINI", "Correction prefix injected into system prompt", "info")
+
+    parts = []
+    if image_bytes and image_mime:
+        parts.append(types.Part.from_bytes(data=image_bytes, mime_type=image_mime))
+    if audio_bytes and audio_mime:
+        parts.append(types.Part.from_bytes(data=audio_bytes, mime_type=audio_mime))
+    if video_bytes and video_mime:
+        parts.append(types.Part.from_bytes(data=video_bytes, mime_type=video_mime))
+    if text:
+        parts.append(types.Part.from_text(text=text))
+
+    log("GEMINI", f"Tone: {tone} | Lang: {lang} | Parts: {len(parts)} | STREAMING", "info")
+
+    contents = []
+    if history:
+        for msg in history:
+            role = "user" if msg["role"] == "user" else "model"
+            contents.append(types.Content(
+                role=role,
+                parts=[types.Part.from_text(text=msg["content"])]
+            ))
+    contents.append(types.Content(role="user", parts=parts))
+
+    try:
+        response_stream = _client.models.generate_content_stream(
+            model=GEMINI_MODEL,
+            contents=contents,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.7,
+            ),
+        )
+
+        for chunk in response_stream:
+            if chunk.text:
+                yield chunk.text
+
+    except Exception as e:
+        log("GEMINI", f"Stream error: {e}", "error")
+        yield f"Error: {str(e)}"

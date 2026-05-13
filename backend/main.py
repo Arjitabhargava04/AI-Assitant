@@ -171,7 +171,76 @@ async def query(
         "error":          result.get("error"),
     })
 
+from fastapi.responses import StreamingResponse
 
+@app.post("/query/stream")
+async def query_stream(
+    text:    str            = Form(""),
+    tone:    str            = Form("normal"),
+    chat_id: str            = Form(""),
+    image:   UploadFile|None = File(None),
+    audio:   UploadFile|None = File(None),
+    video:   UploadFile|None = File(None),
+    user:    dict           = Depends(require_auth),
+):
+    """Streaming version of /query."""
+    from api.pipeline import run_pipeline_stream
+    from api.router import InputPayload
+    from db.queries import save_message
+
+    log("APP", f"STREAM User: {user['email']} | tone={tone}", "info")
+
+    image_bytes = await image.read() if image else None
+    image_mime  = image.content_type if image else None
+    audio_bytes = await audio.read() if audio else None
+    audio_mime  = audio.content_type if audio else None
+    video_bytes = await video.read() if video else None
+    video_mime  = video.content_type if video else None
+
+    payload = InputPayload(
+        text=text, tone=tone,
+        image_bytes=image_bytes, image_mime=image_mime or "",
+        audio_bytes=audio_bytes, audio_mime=audio_mime or "",
+        video_bytes=video_bytes, video_mime=video_mime or "",
+        user_id=user["id"],
+        chat_id=chat_id,
+    )
+    history = []
+    if chat_id:
+        try:
+            from db.queries import get_recent_messages
+            history = get_recent_messages(chat_id, limit=6)
+        except Exception as e:
+            log("APP", f"History load failed: {e}", "warn") 
+    # Save user message before streaming
+    if chat_id:
+        try:
+            save_message(chat_id, user["id"], "user", text, "", "text")
+        except Exception as e:
+            log("APP", f"Save user msg failed: {e}", "warn")
+
+    full_answer = ""
+
+    async def event_stream():
+        nonlocal full_answer
+        async for chunk in run_pipeline_stream(payload, user["email"], history=history):
+            import json
+            try:
+                obj = json.loads(chunk.strip())
+                if obj.get("type") == "text":
+                    full_answer += obj["data"]
+            except:
+                pass
+            yield chunk
+
+        # Save AI message after stream complete
+        if chat_id and full_answer:
+            try:
+                save_message(chat_id, user["id"], "assistant", full_answer, "", "text")
+            except Exception as e:
+                log("APP", f"Save AI msg failed: {e}", "warn")
+
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 # ── POST /speak ───────────────────────────────────────────
 
 class SpeakRequest(BaseModel):

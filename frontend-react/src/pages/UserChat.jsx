@@ -3,8 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { authFetch } from '../utils/api';
 import Sidebar from '../components/Sidebar';
 import InputArea from '../components/InputArea';
-import { UserBubble, AIBubble, TypingIndicator } from '../components/MessageBubble';
-import ProjectsView from './ProjectsView';
+import { UserBubble, AIBubble, TypingIndicator, ThinkingIndicator } from '../components/MessageBubble';import ProjectsView from './ProjectsView';
 import ProjectDetail from './ProjectDetail';
 // const SUGGESTIONS = [
 //   'What dynasty built the Brihadeeswarar Temple?',
@@ -26,7 +25,11 @@ export default function UserChat() {
   const activeProjectForChatRef = useRef(null);
   const [projectRefreshKey, setProjectRefreshKey]       = useState(0);
   const msgsEndRef = useRef(null);
-
+  const [lastSentTone, setLastSentTone]         = useState('normal');
+  const [lastSentHasImage, setLastSentHasImage] = useState(false);
+  const [lastSentHasAudio, setLastSentHasAudio] = useState(false);
+  const [lastSentHasVideo, setLastSentHasVideo] = useState(false);
+  const [streamingMsgId, setStreamingMsgId]     = useState(null);
   useEffect(() => { loadChats(); }, []);
   useEffect(() => { msgsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, typing]);
 
@@ -111,6 +114,12 @@ export default function UserChat() {
 
   async function handleSend({ text, tone, files, prevUrls }) {
     if (typing) return;
+
+    setLastSentTone(tone);
+    setLastSentHasImage(!!files?.image);
+    setLastSentHasAudio(!!files?.audio);
+    setLastSentHasVideo(!!files?.video);
+
     const userMsg = {
       id:        Date.now() + '_u',
       role:      'user',
@@ -128,15 +137,96 @@ export default function UserChat() {
       if (files.image) fd.append('image', files.image);
       if (files.audio) fd.append('audio', files.audio);
       if (files.video) fd.append('video', files.video);
-      const res  = await authFetch('/query', { method: 'POST', body: fd });
-      const data = await res.json();
-      setMessages(prev => [...prev, {
-        id:      Date.now() + '_a',
-        role:    'assistant',
-        content: data.answer || data.error || 'No response.',
-        tone,
-        images:  data.images || [],
-      }]);
+      const aiMsgId = Date.now() + '_a';
+      let firstChunkReceived = false;
+
+      const res = await authFetch('/query/stream', { method: 'POST', body: fd });
+
+      const reader  = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer       = '';
+      let fullText     = '';         // complete text received from backend
+      let revealedText = '';         // text currently shown in UI
+      let images       = [];
+      let streamDone   = false;
+
+      // Smooth reveal — show characters at fixed rate regardless of chunk size
+      const REVEAL_SPEED = 15;       // milliseconds per character (lower = faster)
+      const CHARS_PER_TICK = 2;      // characters revealed per tick
+
+      const revealInterval = setInterval(() => {
+        if (revealedText.length < fullText.length) {
+          const nextLen = Math.min(revealedText.length + CHARS_PER_TICK, fullText.length);
+          revealedText = fullText.substring(0, nextLen);
+
+          if (!firstChunkReceived) {
+            firstChunkReceived = true;
+            setTyping(false);
+            setStreamingMsgId(aiMsgId);
+            setMessages(prev => [...prev, {
+              id:      aiMsgId,
+              role:    'assistant',
+              content: revealedText,
+              tone,
+              images:  [],
+            }]);
+          } else {
+            setMessages(prev => prev.map(m =>
+              m.id === aiMsgId ? { ...m, content: revealedText } : m
+            ));
+          }
+        } else if (streamDone) {
+          // Stream is done AND all text revealed → stop interval
+          clearInterval(revealInterval);
+        }
+      }, REVEAL_SPEED);
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            streamDone = true;
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const obj = JSON.parse(line);
+
+              if (obj.type === 'text') {
+                fullText += obj.data;
+              }
+
+              if (obj.type === 'images') {
+                images = obj.data;
+                setMessages(prev => prev.map(m =>
+                  m.id === aiMsgId ? { ...m, images } : m
+                ));
+              }
+            } catch (e) {
+              console.error('Parse error:', e);
+            }
+          }
+        }
+      } finally {
+        // Wait for reveal to catch up to end of stream
+        const waitForReveal = () => new Promise(resolve => {
+          const check = setInterval(() => {
+            if (revealedText.length >= fullText.length) {
+              clearInterval(check);
+              clearInterval(revealInterval);
+              resolve();
+            }
+          }, 50);
+        });
+        await waitForReveal();
+        setStreamingMsgId(null);
+      }
     } catch {
       setMessages(prev => [...prev, {
         id:      Date.now() + '_err',
@@ -300,11 +390,19 @@ export default function UserChat() {
                     messageId={m.id}
                     isLast={isLast}
                     onRegenerate={handleRegenerate}
+                    isStreaming={m.id === streamingMsgId}
                   />
                 );
               })
               )}
-              {typing && <TypingIndicator />}
+              {typing && (
+                <ThinkingIndicator
+                  tone={lastSentTone || 'normal'}
+                  hasImage={lastSentHasImage}
+                  hasAudio={lastSentHasAudio}
+                  hasVideo={lastSentHasVideo}
+                />
+              )}
               <div ref={msgsEndRef} />
             </div>
             <InputArea onSend={handleSend} disabled={typing} />

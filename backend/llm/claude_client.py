@@ -178,3 +178,120 @@ def call_claude_deep(
     except Exception as e:
         log("CLAUDE", f"Error: {e}", "error")
         raise
+
+
+async def call_claude_deep_stream(
+    user_question: str,
+    gemini_findings: str = "",
+    vision_context: str = "",
+    image_bytes: bytes | None = None,
+    image_mime: str | None = None,
+    tone: str = "researcher",
+    correction_prefix: str = "",
+    history: list | None = None,
+):
+    """
+    Claude deep analysis with streaming for final synthesis.
+    First does trusted + open search (no stream),
+    then streams the final synthesis answer.
+    """
+    from utils.debug import log, log_separator
+    from llm.prompts import get_claude_system_prompt
+
+    log_separator("CLAUDE DEEP STREAM")
+    lang = detect_language(user_question)
+    log("LANG", f"Detected: {lang.upper()}", "info")
+
+    system_prompt = get_claude_system_prompt(tone, lang)
+    if correction_prefix:
+        system_prompt = correction_prefix + "\n\n" + system_prompt
+        log("CLAUDE", "Correction prefix injected into system prompt", "info")
+
+    log("CLAUDE", f"Tone: {tone} | Lang: {lang} | Has image: {bool(image_bytes)}", "info")
+
+    # Build conversation history context
+    history_text = ""
+    if history:
+        history_text = "[Previous Conversation]\n"
+        for msg in history:
+            role_label = "User" if msg["role"] == "user" else "Assistant"
+            history_text += f"{role_label}: {msg['content']}\n\n"
+
+    full_text = ""
+    if history_text:
+        full_text += history_text + "\n"
+    if gemini_findings:
+        full_text += f"[Perception Findings]\n{gemini_findings}\n\n"
+    if vision_context:
+        full_text += f"[Vision Context]\n{vision_context}\n\n"
+    full_text += f"[Current User Question]\n{user_question}\n\nUse the previous conversation to understand context references like 'his', 'it', 'that monument'."
+
+    # Run trusted search (non-streaming)
+    trusted_text = ""
+    try:
+        log("CLAUDE", "Starting TRUSTED...", "info")
+        trusted_response = _client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=2000,
+            system=system_prompt + "\n\nUse trusted heritage sources only.",
+            messages=[{"role": "user", "content": full_text}],
+            tools=[{
+                "type": "web_search_20250305",
+                "name": "web_search",
+                "max_uses": 1,
+            }],
+        )
+        for block in trusted_response.content:
+            if getattr(block, "type", "") == "text":
+                trusted_text += block.text or ""
+        log("CLAUDE", f"TRUSTED done — {len(trusted_text)} chars", "success")
+    except Exception as e:
+        log("CLAUDE", f"TRUSTED failed: {e}", "warn")
+
+    # Run open search (non-streaming)
+    open_text = ""
+    try:
+        log("CLAUDE", "Starting OPEN...", "info")
+        open_response = _client.messages.create(
+            model=CLAUDE_MODEL,
+            max_tokens=2000,
+            system=system_prompt + "\n\nSearch open web for recent info.",
+            messages=[{"role": "user", "content": full_text}],
+            tools=[{
+                "type": "web_search_20250305",
+                "name": "web_search",
+                "max_uses": 1,
+            }],
+        )
+        for block in open_response.content:
+            if getattr(block, "type", "") == "text":
+                open_text += block.text or ""
+        log("CLAUDE", f"OPEN done — {len(open_text)} chars", "success")
+    except Exception as e:
+        log("CLAUDE", f"OPEN failed: {e}", "warn")
+
+    # Final synthesis WITH STREAMING
+    synthesis_prompt = f"""{full_text}
+
+[Trusted Search Findings]
+{trusted_text}
+
+[Open Search Findings]
+{open_text}
+
+Now synthesize a comprehensive scholarly answer using both findings."""
+
+    log("CLAUDE", "Starting FINAL synthesis (streaming)...", "info")
+    try:
+        with _client.messages.stream(
+            model=CLAUDE_MODEL,
+            max_tokens=4000,
+            system=system_prompt,
+            messages=[{"role": "user", "content": synthesis_prompt}],
+        ) as stream:
+            for text_chunk in stream.text_stream:
+                yield text_chunk
+        log("CLAUDE", "Stream complete", "success")
+    except Exception as e:
+        log("CLAUDE", f"Stream error: {e}", "error")
+        yield f"Error: {str(e)}"
