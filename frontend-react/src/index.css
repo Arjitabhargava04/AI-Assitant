@@ -46,6 +46,8 @@ body { background: #0D0D0D; color: #E8E2D9; font-family: 'Inter', sans-serif; ov
 .flex.gap-2.group:hover .msg-actions,
 .flex.gap-2.flex-row-reverse.group:hover .msg-actions {
   opacity: 1 !important;
+  max-height: 30px !important;
+  margin-top: 6px !important;
 }
 
 @keyframes thinkFadeIn {

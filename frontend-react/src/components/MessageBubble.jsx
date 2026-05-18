@@ -152,7 +152,7 @@ export function UserBubble({ content, imageUrl, audioName, videoName, messageId,
 
         {/* User message action buttons */}
         {!editing && (
-          <div className="msg-actions" style={{ display: 'flex', gap: 4, marginTop: 6, justifyContent: 'flex-end', opacity: 0, transition: 'opacity 0.15s' }}>
+         <div className="msg-actions" style={{ display: 'flex', gap: 4, justifyContent: 'flex-end', maxHeight: 0, marginTop: 0, overflow: 'hidden', opacity: 0, transition: 'all 0.2s ease' }}>
             <ActionBtn onClick={copyText} active={copied} activeColor="#4a9a6a" title="Copy">
               <CopyIcon />
             </ActionBtn>
@@ -268,7 +268,7 @@ export function AIBubble({ content, tone, images, messageId, isLast, onRegenerat
         </div>
 
         {/* AI message action buttons */}
-        <div className="msg-actions" style={{ display: 'flex', gap: 4, marginTop: 6, opacity: 0, transition: 'opacity 0.15s' }}>
+        <div className="msg-actions" style={{ display: 'flex', gap: 4, maxHeight: 0, marginTop: 0, overflow: 'hidden', opacity: 0, transition: 'all 0.2s ease' }}>
           <ActionBtn onClick={copyText} active={copied} activeColor="#4a9a6a" title="Copy">
             <CopyIcon />
           </ActionBtn>

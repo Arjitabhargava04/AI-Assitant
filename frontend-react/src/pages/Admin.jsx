@@ -615,7 +615,16 @@ function UserMsg({ content, messageId, isLast, onEditSave, imageUrl }) {
         )}
 
         {!editing && (
-          <div style={{ display: 'flex', gap: 4, marginTop: 6, justifyContent: 'flex-end', opacity: hover ? 1 : 0, transition: 'opacity 0.15s' }}>
+          <div style={{ 
+            display: 'flex', 
+            gap: 4, 
+            justifyContent: 'flex-end',
+            maxHeight: hover ? 30 : 0,
+            marginTop: hover ? 6 : 0,
+            overflow: 'hidden',
+            opacity: hover ? 1 : 0,
+            transition: 'all 0.2s ease'
+          }}>
             <AdminActionBtn onClick={copyText} active={copied} activeColor="#4a9a6a" title="Copy">
               <CopyIconSvg />
             </AdminActionBtn>
@@ -708,7 +717,15 @@ function AIMsg({ content, geminiSummary, questionText, onSaveCorrection, isSuper
         </div>
 
         {/* Action buttons */}
-        <div style={{ display: 'flex', gap: 4, marginTop: 6, opacity: hover ? 1 : 0, transition: 'opacity 0.15s' }}>
+        <div style={{ 
+          display: 'flex', 
+          gap: 4, 
+          maxHeight: hover ? 30 : 0,
+          marginTop: hover ? 6 : 0,
+          overflow: 'hidden',
+          opacity: hover ? 1 : 0,
+          transition: 'all 0.2s ease'
+        }}>
           <AdminActionBtn onClick={copyText} active={copied} activeColor="#4a9a6a" title="Copy"><CopyIconSvg /></AdminActionBtn>
           <AdminActionBtn onClick={handleLike} active={liked} activeColor="#4a9a6a" title="Like"><LikeIconSvg /></AdminActionBtn>
           <AdminActionBtn onClick={handleDislike} active={disliked} activeColor="#ff4a4a" title="Dislike"><DislikeIconSvg /></AdminActionBtn>
