@@ -72,3 +72,11 @@ htmlcov/
 # Jupyter (if used)
 # =========================
 .ipynb_checkpoints/
+
+# =========================
+.env
+.env.local
+.env.production
+
+# Docker volumes
+mysql_data/

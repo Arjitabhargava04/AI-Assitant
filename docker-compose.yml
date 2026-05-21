@@ -1,0 +1,87 @@
+services:
+  # ============================================
+  # MySQL Database (LOCAL ONLY)
+  # On AWS we will remove this and use RDS
+  # ============================================
+  mysql:
+    image: mysql:8.0
+    container_name: vikramaditya-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3307:3306"
+    networks:
+      - vikramaditya-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ============================================
+  # FastAPI Backend
+  # ============================================
+  backend:
+    image: vikramaditiyaai/vikramaditiya-backend:v1
+    container_name: vikramaditya-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      # Database
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      
+      # API Keys
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GOOGLE_VISION_KEY: ${GOOGLE_VISION_KEY}
+      GOOGLE_SEARCH_KEY: ${GOOGLE_SEARCH_KEY}
+      GOOGLE_SEARCH_CX: ${GOOGLE_SEARCH_CX}
+      
+      # Auth
+      JWT_SECRET: ${JWT_SECRET}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      
+      # Other
+      DEBUG_MODE: ${DEBUG_MODE:-false}
+    networks:
+      - vikramaditya-net
+
+  # ============================================
+  # React Frontend (Nginx)
+  # ============================================
+  frontend:
+    image: vikramaditiyaai/vikramaditiya-frontend:v1
+    container_name: vikramaditya-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+    networks:
+      - vikramaditya-net
+
+# ============================================
+# Persistent volume for MySQL data
+# ============================================
+volumes:
+  mysql_data:
+    driver: local
+
+# ============================================
+# Internal network for containers
+# ============================================
+networks:
+  vikramaditya-net:
+    driver: bridge
