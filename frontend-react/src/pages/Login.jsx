@@ -71,7 +71,7 @@ navigate(data.is_admin ? '/admin' : '/chat', { replace: true });
         Back to chat
       </button>
 
-      <div className="w-full max-w-sm bg-bg2/90 backdrop-blur-md border border-b1 rounded-2xl p-10 relative z-20">
+      <div className="w-full max-w-sm bg-bg2/90 backdrop-blur-md border border-b1 rounded-2xl p-6 sm:p-10 relative z-20">
 
         {/* Logo */}
         <div className="text-center mb-8">

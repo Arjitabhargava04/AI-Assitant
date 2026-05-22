@@ -187,7 +187,7 @@ export default function InputArea({ onSend, disabled, isGuest = false }) {
 
       {/* Recording overlay */}
       {recState && (
-        <div className="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50 gap-5">
+        <div className="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50 gap-4 sm:gap-5 px-4">
 
           {/* Live camera preview — only for video */}
           {recState.type === 'video' && (
@@ -196,7 +196,7 @@ export default function InputArea({ onSend, disabled, isGuest = false }) {
               autoPlay
               muted
               playsInline
-              className="w-80 h-52 rounded-2xl object-cover border border-white/10 bg-black"
+              className="w-full max-w-xs sm:max-w-sm aspect-video rounded-2xl object-cover border border-white/10 bg-black"
             />
           )}
 
@@ -206,16 +206,16 @@ export default function InputArea({ onSend, disabled, isGuest = false }) {
               Recording {recState.type}...
             </span>
           </div>
-          <div className="font-serif text-6xl font-light text-white tracking-wide">
+          <div className="font-serif text-5xl sm:text-6xl font-light text-white tracking-wide">
             {formatSecs(recState.secs)}
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 flex-wrap justify-center">
             <button onClick={cancelRecord}
               className="px-5 py-2.5 border border-white/20 rounded-lg text-white/50 text-sm hover:border-white/40 transition-colors">
               Cancel
             </button>
             <button onClick={stopRecord}
-              className="px-8 py-2.5 bg-danger rounded-lg text-white text-sm hover:bg-red-700 transition-colors">
+              className="px-6 sm:px-8 py-2.5 bg-danger rounded-lg text-white text-sm hover:bg-red-700 transition-colors">
               ■ Stop &amp; Use
             </button>
           </div>

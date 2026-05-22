@@ -41,6 +41,7 @@ export default function UserChat() {
   const [lastSentHasAudio, setLastSentHasAudio] = useState(false);
   const [lastSentHasVideo, setLastSentHasVideo] = useState(false);
   const [streamingMsgId, setStreamingMsgId]     = useState(null);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   useEffect(() => {
     if (isGuest) return;       // Guests have no backend chats
     loadChats();
@@ -543,6 +544,8 @@ export default function UserChat() {
         onSelectChat={selectChat}
         onViewProjects={() => setView('projects')}
         onLoginClick={goToLogin}
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
       />
 
       {/* Projects full page view */}
@@ -571,11 +574,21 @@ export default function UserChat() {
           {/* ─── GUEST landing (no messages yet) ─── */}
           {isGuest && messages.length === 0 && (
             <>
-              <header className="flex items-center justify-between px-5 h-14 border-b border-b1 flex-shrink-0"
+              <header className="flex items-center justify-between px-3 sm:px-5 h-14 border-b border-b1 flex-shrink-0 gap-2"
                       style={{ background: 'rgba(17,17,17,0.55)', backdropFilter: 'blur(12px)' }}>
-                <div className="font-serif text-t2 text-base">Heritage &amp; Archaeology AI</div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <button onClick={() => setMobileSidebarOpen(true)} aria-label="Open menu"
+                    className="md:hidden w-9 h-9 flex items-center justify-center rounded-md text-t2 hover:text-t1 hover:bg-bg3 transition-all flex-shrink-0">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="3" y1="6" x2="21" y2="6"/>
+                      <line x1="3" y1="12" x2="21" y2="12"/>
+                      <line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                  </button>
+                  <div className="font-serif text-t2 text-sm sm:text-base truncate">Heritage &amp; Archaeology AI</div>
+                </div>
                 <button onClick={goToLogin}
-                  className="px-5 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-90"
+                  className="px-3 sm:px-5 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-90 flex-shrink-0"
                   style={{ background: 'linear-gradient(135deg,#C4934A,#8B6A35)', color: '#1A1208' }}>
                   Login
                 </button>
@@ -611,20 +624,30 @@ export default function UserChat() {
               />
 
               <header
-                className="flex items-center justify-between px-5 h-14 border-b border-b1 flex-shrink-0 relative z-10"
+                className="flex items-center justify-between px-3 sm:px-5 h-14 border-b border-b1 flex-shrink-0 relative z-10 gap-2"
                 style={{ background: 'rgba(17,17,17,0.55)', backdropFilter: 'blur(12px)' }}
               >
-                <div className="font-serif text-t2 text-base">{chatTitle}</div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <button onClick={() => setMobileSidebarOpen(true)} aria-label="Open menu"
+                    className="md:hidden w-9 h-9 flex items-center justify-center rounded-md text-t2 hover:text-t1 hover:bg-bg3 transition-all flex-shrink-0">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="3" y1="6" x2="21" y2="6"/>
+                      <line x1="3" y1="12" x2="21" y2="12"/>
+                      <line x1="3" y1="18" x2="21" y2="18"/>
+                    </svg>
+                  </button>
+                  <div className="font-serif text-t2 text-sm sm:text-base truncate">{chatTitle}</div>
+                </div>
                 {isGuest && (
                   <button onClick={goToLogin}
-                    className="px-5 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-90"
+                    className="px-3 sm:px-5 py-1.5 rounded-lg text-xs font-semibold transition-all hover:opacity-90 flex-shrink-0"
                     style={{ background: 'linear-gradient(135deg,#C4934A,#8B6A35)', color: '#1A1208' }}>
                     Login
                   </button>
                 )}
               </header>
 
-              <div className="flex-1 flex flex-col overflow-hidden max-w-3xl w-full mx-auto px-4 relative z-10">
+              <div className="flex-1 flex flex-col overflow-hidden max-w-3xl w-full mx-auto px-3 sm:px-4 relative z-10 min-w-0">
                 <div className="flex-1 overflow-y-auto py-5 flex flex-col gap-5">
 
                   {messages.length === 0 ? (

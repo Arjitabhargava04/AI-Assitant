@@ -19,6 +19,19 @@ export default function Admin() {
   const [lastSentHasAudio, setLastSentHasAudio] = useState(false);
   const [lastSentHasVideo, setLastSentHasVideo] = useState(false);
   const msgsEndRef = useRef(null);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+  );
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 767px)');
+    const handler = (e) => setIsMobile(e.matches);
+    mql.addEventListener ? mql.addEventListener('change', handler) : mql.addListener(handler);
+    return () => {
+      mql.removeEventListener ? mql.removeEventListener('change', handler) : mql.removeListener(handler);
+    };
+  }, []);
 
   useEffect(() => { loadSessions(); }, []);
   useEffect(() => { msgsEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, typing]);
@@ -422,11 +435,28 @@ export default function Admin() {
         { id: 'fixes',  icon: '🔧', label: 'Fixes' },
       ];
 
+  const sidebarStyle = isMobile
+    ? {
+        position: 'fixed', left: 0, top: 0, bottom: 0, zIndex: 50,
+        width: 260, maxWidth: '85vw',
+        background: '#111', borderRight: '0.5px solid #222',
+        display: 'flex', flexDirection: 'column',
+        transform: mobileSidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
+        transition: 'transform 0.3s ease',
+      }
+    : { width: 220, flexShrink: 0, background: '#111', borderRight: '0.5px solid #222', display: 'flex', flexDirection: 'column' };
+
   return (
     <div className="h-full flex" style={{ background: '#0D0D0D' }}>
 
+      {/* Mobile backdrop */}
+      {isMobile && mobileSidebarOpen && (
+        <div onClick={() => setMobileSidebarOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 40 }} aria-hidden="true" />
+      )}
+
       {/* SIDEBAR */}
-      <div style={{ width: 220, flexShrink: 0, background: '#111', borderRight: '0.5px solid #222', display: 'flex', flexDirection: 'column' }}>
+      <div style={sidebarStyle}>
         
         {/* Logo */}
         <div style={{ padding: '14px 12px 10px', borderBottom: '0.5px solid #222' }}>
@@ -437,7 +467,7 @@ export default function Admin() {
           <div style={{ fontSize: 9, padding: '2px 7px', borderRadius: 4, display: 'inline-block', background: isSuper ? '#2a1a00' : '#1a1a2a', color: isSuper ? '#C4934A' : '#7a7aff', border: `0.5px solid ${isSuper ? '#C4934A44' : '#7a7aff44'}`, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             {isSuper ? 'Super Admin' : 'Small Admin'}
           </div>
-          <button onClick={newSession} style={{ width: '100%', padding: '8px 12px', background: '#1a1200', border: '0.5px solid #C4934A44', borderRadius: 8, color: '#C4934A', fontSize: 12, cursor: 'pointer', textAlign: 'left', marginTop: 10 }}>
+          <button onClick={() => { newSession(); if (isMobile) setMobileSidebarOpen(false); }} style={{ width: '100%', padding: '8px 12px', background: '#1a1200', border: '0.5px solid #C4934A44', borderRadius: 8, color: '#C4934A', fontSize: 12, cursor: 'pointer', textAlign: 'left', marginTop: 10 }}>
             + New Tuning Session
           </button>
         </div>
@@ -445,7 +475,7 @@ export default function Admin() {
         {/* Nav */}
         <div style={{ padding: 8 }}>
           {navItems.map(item => (
-            <div key={item.id} onClick={() => setView(item.id)}
+            <div key={item.id} onClick={() => { setView(item.id); if (isMobile) setMobileSidebarOpen(false); }}
               style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderRadius: 7, color: view === item.id ? '#C4934A' : '#888', background: view === item.id ? '#1a1200' : 'none', fontSize: 12, cursor: 'pointer', marginBottom: 2 }}>
               <span>{item.icon}</span> {item.label}
             </div>
@@ -456,7 +486,7 @@ export default function Admin() {
         <div style={{ padding: '4px 8px', flex: 1, overflowY: 'auto' }}>
           <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '4px 4px 6px' }}>Sessions</div>
           {sessions.map(s => (
-            <div key={s.id} onClick={() => selectSession(s.id, s.title)}
+            <div key={s.id} onClick={() => { selectSession(s.id, s.title); if (isMobile) setMobileSidebarOpen(false); }}
               style={{ padding: '7px 10px', borderRadius: 7, color: currentSession?.id === s.id ? '#C4934A' : '#666', background: currentSession?.id === s.id ? '#1a1200' : 'none', fontSize: 11, cursor: 'pointer', marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {s.title || 'New session'}
             </div>
@@ -477,13 +507,25 @@ export default function Admin() {
       </div>
 
       {/* MAIN CONTENT */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        
-        <div style={{ padding: '12px 20px', borderBottom: '0.5px solid #1a1a1a', color: '#888', fontSize: 13, flexShrink: 0 }}>
-          { view === 'tuning' ? 'Admin Tuning Interface'
-          : view === 'fixes' ? 'Fixes'
-          : view === 'small-admins' ? 'Small Admins'
-          : 'Users' }
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+
+        <div style={{ padding: '10px 14px', borderBottom: '0.5px solid #1a1a1a', color: '#888', fontSize: 13, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
+          {isMobile && (
+            <button onClick={() => setMobileSidebarOpen(true)} aria-label="Open menu"
+              style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, background: 'none', border: 'none', color: '#888', cursor: 'pointer', flexShrink: 0 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <line x1="3" y1="12" x2="21" y2="12"/>
+                <line x1="3" y1="18" x2="21" y2="18"/>
+              </svg>
+            </button>
+          )}
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            { view === 'tuning' ? 'Admin Tuning Interface'
+            : view === 'fixes' ? 'Fixes'
+            : view === 'small-admins' ? 'Small Admins'
+            : 'Users' }
+          </span>
         </div>
 
         <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
@@ -502,8 +544,8 @@ export default function Admin() {
 
 function TuningView({ messages, typing, msgsEndRef, onSend, onSaveCorrection, isSuper, onRegenerate, onEditSave, lastSentTone, lastSentHasImage, lastSentHasAudio, lastSentHasVideo, streamingMsgId }) {
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+      <div className="admin-scroll" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 16 }}>
         {messages.length === 0 && (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 40 }}>
             <div style={{ fontFamily: 'serif', fontSize: 60, color: '#222', marginBottom: 12 }}>𝑉</div>
@@ -531,7 +573,7 @@ function TuningView({ messages, typing, msgsEndRef, onSend, onSaveCorrection, is
         )}
         <div ref={msgsEndRef} />
       </div>
-      <div style={{ padding: '0 16px 12px', flexShrink: 0 }}>
+      <div style={{ padding: '0 12px 12px', flexShrink: 0 }}>
         <InputArea onSend={onSend} disabled={typing} />
       </div>
     </div>
@@ -565,10 +607,10 @@ function UserMsg({ content, messageId, isLast, onEditSave, imageUrl }) {
   }
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}
+    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, minWidth: 0 }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}>
-      <div style={{ maxWidth: '75%' }}>
+      <div style={{ maxWidth: '85%', minWidth: 0 }}>
         {editing ? (
           <div style={{ background: '#1a1a1a', borderRadius: 12, padding: 12 }}>
             <textarea value={editText} onChange={e => setEditText(e.target.value)}
@@ -706,12 +748,12 @@ function AIMsg({ content, geminiSummary, questionText, onSaveCorrection, isSuper
   }
 
   return (
-    <div style={{ display: 'flex', gap: 8 }}
+    <div style={{ display: 'flex', gap: 8, minWidth: 0 }}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}>
       <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg,#C4934A,#8B6A35)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 12, fontFamily: 'serif', flexShrink: 0, marginTop: 2 }}>V</div>
-      <div style={{ flex: 1 }}>
-        <div style={{ background: '#111', border: '0.5px solid #222', borderRadius: '12px 12px 12px 2px', padding: '10px 14px', fontSize: 12, color: '#E8E2D9', lineHeight: 1.6 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="md-content" style={{ background: '#111', border: '0.5px solid #222', borderRadius: '12px 12px 12px 2px', padding: '10px 14px', fontSize: 12, color: '#E8E2D9', lineHeight: 1.6, overflowWrap: 'anywhere', wordBreak: 'break-word' }}>
           <span dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
           {isStreaming && <span className="stream-cursor"></span>}
         </div>
@@ -876,7 +918,7 @@ function FixesView({ isSuper, userId }) {
   if (selected) {
     const c = corrections.find(x => x.id === selected);
     return (
-      <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 12px', minWidth: 0 }}>
         <button onClick={() => setSelected(null)} style={{ fontSize: 11, color: '#666', background: 'none', border: 'none', cursor: 'pointer', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 4 }}>← Back to fixes</button>
         <div style={{ background: '#111', border: '0.5px solid #222', borderRadius: 12, padding: 16, maxWidth: 640 }}>
           <div style={{ fontSize: 10, color: '#555', marginBottom: 4 }}>Question asked</div>
@@ -899,7 +941,7 @@ function FixesView({ isSuper, userId }) {
   }
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: 20, position: 'relative' }}>
+    <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 12px', position: 'relative', minWidth: 0 }}>
 
       {/* Delete confirmation popup */}
       {deleteConfirmId && (
@@ -1088,7 +1130,7 @@ function SmallAdminsView() {
   }
   if (selected && selectedSession) {
     return (
-      <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 12px', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, fontSize: 11, color: '#555' }}>
           <button onClick={() => setSelectedSession(null)}
             style={{ background: 'none', border: 'none', color: '#555', cursor: 'pointer', fontSize: 11 }}>
@@ -1106,8 +1148,8 @@ function SmallAdminsView() {
               {m.role === 'assistant' && (
                 <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'linear-gradient(135deg,#C4934A,#8B6A35)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 11, fontFamily: 'serif', flexShrink: 0, marginRight: 8, marginTop: 2 }}>V</div>
               )}
-              <div style={{
-                maxWidth: '70%',
+              <div className={m.role === 'assistant' ? 'md-content' : ''} style={{
+                maxWidth: '85%', minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word',
                 background: m.role === 'user' ? '#1a1a1a' : '#111',
                 border: m.role === 'user' ? 'none' : '0.5px solid #222',
                 borderRadius: m.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
@@ -1133,7 +1175,7 @@ function SmallAdminsView() {
   }
   if (selected) {
     return (
-      <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 12px', minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
           <button onClick={() => setSelected(null)} style={{ fontSize: 11, color: '#666', background: 'none', border: 'none', cursor: 'pointer' }}>← Small Admins</button>
           <span style={{ color: '#333' }}>|</span>
@@ -1182,7 +1224,7 @@ function SmallAdminsView() {
   }
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+    <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 12px', minWidth: 0 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
         <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{admins.length} small admins</div>
         <button onClick={() => setShowCreate(true)} style={{ fontSize: 11, padding: '5px 12px', borderRadius: 7, border: '0.5px solid #C4934A44', background: '#1a1200', color: '#C4934A', cursor: 'pointer' }}>+ Create Admin</button>
@@ -1301,7 +1343,7 @@ function UsersView() {
 
   if (selected && selectedChat) {
     return (
-      <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 12px', minWidth: 0 }}>
 
         {/* Breadcrumb */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 16, fontSize: 11, color: '#555' }}>
@@ -1332,8 +1374,8 @@ function UsersView() {
               {m.role === 'assistant' && (
                 <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'linear-gradient(135deg,#C4934A,#8B6A35)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 11, fontFamily: 'serif', flexShrink: 0, marginRight: 8, marginTop: 2 }}>V</div>
               )}
-              <div style={{
-                maxWidth: '70%',
+              <div className={m.role === 'assistant' ? 'md-content' : ''} style={{
+                maxWidth: '85%', minWidth: 0, overflowWrap: 'anywhere', wordBreak: 'break-word',
                 background: m.role === 'user' ? '#1a1a1a' : '#111',
                 border: m.role === 'user' ? 'none' : '0.5px solid #222',
                 borderRadius: m.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
@@ -1363,7 +1405,7 @@ function UsersView() {
 
   if (selected) {
     return (
-      <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 12px', minWidth: 0 }}>
         <button onClick={() => setSelected(null)}
           style={{ fontSize: 11, color: '#666', background: 'none', border: 'none', cursor: 'pointer', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 4 }}>
           ← Users
@@ -1413,7 +1455,7 @@ function UsersView() {
 
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: 20 }}>
+    <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '16px 12px', minWidth: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           {filteredUsers.length} users

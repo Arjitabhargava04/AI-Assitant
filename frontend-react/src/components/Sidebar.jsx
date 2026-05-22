@@ -1,15 +1,31 @@
 // src/components/Sidebar.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import WipModal from './WipModal';
 import { useAuth } from '../context/AuthContext';
 import { formatDate } from '../utils/api';
 
-export default function Sidebar({ chats, currentChatId, onNewChat, onSelectChat, onViewProjects, extraPanel, onLoginClick }) {
+export default function Sidebar({ chats, currentChatId, onNewChat, onSelectChat, onViewProjects, extraPanel, onLoginClick, mobileOpen = false, onMobileClose }) {
   const { user, logout }    = useAuth();
   const [search, setSearch] = useState('');
   const [open, setOpen]     = useState(true);
   const [wipOpen, setWipOpen] = useState(false);
   const [wipFeature, setWipFeature] = useState('');
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+  );
+
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 767px)');
+    const handler = (e) => setIsMobile(e.matches);
+    mql.addEventListener ? mql.addEventListener('change', handler) : mql.addListener(handler);
+    return () => {
+      mql.removeEventListener ? mql.removeEventListener('change', handler) : mql.removeListener(handler);
+    };
+  }, []);
+
+  // Close mobile drawer on selection actions
+  function closeMobile() { if (isMobile && onMobileClose) onMobileClose(); }
+  const withClose = (fn) => (...args) => { closeMobile(); return fn?.(...args); };
 
   const isGuest = !user;
 
@@ -28,8 +44,8 @@ export default function Sidebar({ chats, currentChatId, onNewChat, onSelectChat,
     ? chats.filter(c => (c.title || '').toLowerCase().includes(search.toLowerCase()))
     : chats;
 
-  // ── Collapsed icon rail ───────────────────────────────────
-  if (!open) {
+  // ── Collapsed icon rail (desktop only) ────────────────────
+  if (!open && !isMobile) {
     return (
       <div className="flex-shrink-0 bg-bg2 border-r border-b1 flex flex-col items-center py-3 gap-1 w-14 h-full overflow-y-auto">
         {/* Expand sidebar */}
@@ -148,9 +164,18 @@ export default function Sidebar({ chats, currentChatId, onNewChat, onSelectChat,
     );
   }
 
-  // ── Full sidebar ──────────────────────────────────────────
+  // ── Full sidebar (also used as mobile drawer) ─────────────
+  const sidebarClass = isMobile
+    ? `fixed left-0 top-0 bottom-0 z-50 w-72 max-w-[85vw] bg-bg2 border-r border-b1 flex flex-col transform transition-transform duration-300 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`
+    : 'w-64 flex-shrink-0 bg-bg2 border-r border-b1 flex flex-col h-full';
+
   return (
-    <div className="w-64 flex-shrink-0 bg-bg2 border-r border-b1 flex flex-col h-full">
+    <>
+      {/* Mobile backdrop */}
+      {isMobile && mobileOpen && (
+        <div onClick={onMobileClose} className="fixed inset-0 bg-black/60 z-40" aria-hidden="true" />
+      )}
+    <div className={sidebarClass}>
 
       {/* Top bar */}
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-b1">
@@ -166,13 +191,20 @@ export default function Sidebar({ chats, currentChatId, onNewChat, onSelectChat,
           </span>
         </div>
         <div className="flex items-center gap-1">
-          {/* Collapse sidebar */}
-          <button onClick={() => setOpen(false)} title="Close sidebar"
+          {/* Collapse / close sidebar */}
+          <button onClick={() => isMobile ? onMobileClose?.() : setOpen(false)} title={isMobile ? 'Close' : 'Close sidebar'}
             className="w-7 h-7 flex items-center justify-center rounded-md text-t3 hover:text-t1 hover:bg-bg3 transition-all">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <rect x="3" y="3" width="18" height="18" rx="2"/>
-              <line x1="9" y1="3" x2="9" y2="21"/>
-            </svg>
+            {isMobile ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <line x1="9" y1="3" x2="9" y2="21"/>
+              </svg>
+            )}
           </button>
         </div>
       </div>
@@ -181,12 +213,12 @@ export default function Sidebar({ chats, currentChatId, onNewChat, onSelectChat,
 
       {/* Nav items — Group 1 */}
       <div className="px-2 py-2 border-b border-b1 space-y-0.5">
-        <NavItem onClick={onNewChat} label="New chat" icon={
+        <NavItem onClick={withClose(onNewChat)} label="New chat" icon={
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
             <path d="M12 5v14M5 12h14"/>
           </svg>
         }/>
-        <NavItem onClick={onNewChat} label="Home" icon={
+        <NavItem onClick={withClose(onNewChat)} label="Home" icon={
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
             <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2h-4a2 2 0 01-2-2v-5h-2v5a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
           </svg>
@@ -224,7 +256,7 @@ export default function Sidebar({ chats, currentChatId, onNewChat, onSelectChat,
             <line x1="8" y1="17" x2="13" y2="17"/>
           </svg>
         }/>
-        <NavItem onClick={handleProjects} label="Projects" icon={
+        <NavItem onClick={withClose(handleProjects)} label="Projects" icon={
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
             <path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
           </svg>
@@ -249,7 +281,7 @@ export default function Sidebar({ chats, currentChatId, onNewChat, onSelectChat,
         {!filtered.length ? (
           <div className="text-center py-8 text-t3 text-xs">No conversations yet</div>
         ) : filtered.map(c => (
-          <div key={c.id} onClick={() => onSelectChat(c.id, c.title)}
+          <div key={c.id} onClick={() => { closeMobile(); onSelectChat(c.id, c.title); }}
             className={`px-3 py-2 rounded-lg cursor-pointer transition-colors mb-0.5 ${
               c.id === currentChatId ? 'bg-bg4 text-t1' : 'text-t2 hover:bg-bg3 hover:text-t1'
             }`}>
@@ -309,6 +341,7 @@ export default function Sidebar({ chats, currentChatId, onNewChat, onSelectChat,
         onClose={() => setWipOpen(false)}
       />
     </div>
+    </>
   );
 }
 

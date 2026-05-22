@@ -41,25 +41,25 @@ export default function GuestLanding({ onSendMessage, onTopicClick }) {
 
       {/* Scrollable content */}
       <div className="relative z-10 flex-1 overflow-y-auto">
-        <div className="max-w-5xl w-full mx-auto px-8 pt-16 pb-8">
+        <div className="max-w-5xl w-full mx-auto px-4 sm:px-6 md:px-8 pt-8 sm:pt-12 md:pt-16 pb-8">
 
           {/* ─── Hero ─── */}
-          <div className="text-center mb-10" style={{ animation: 'guestFadeUp 0.6s ease both' }}>
+          <div className="text-center mb-8 sm:mb-10" style={{ animation: 'guestFadeUp 0.6s ease both' }}>
             <h1
               className="font-serif text-t1 mb-2"
-              style={{ fontSize: '46px', fontWeight: 400, lineHeight: 1.15, textShadow: '0 4px 24px rgba(0,0,0,0.5)' }}
+              style={{ fontSize: 'clamp(26px, 6vw, 46px)', fontWeight: 400, lineHeight: 1.15, textShadow: '0 4px 24px rgba(0,0,0,0.5)' }}
             >
               Welcome to Vikramaditya{' '}
               <span style={{ color: '#C4934A', fontStyle: 'italic', fontWeight: 500 }}>AI</span>
             </h1>
             <p
               className="font-serif italic mb-5"
-              style={{ fontSize: '21px', color: '#C4934A', fontWeight: 400, textShadow: '0 2px 12px rgba(0,0,0,0.6)' }}
+              style={{ fontSize: 'clamp(15px, 3vw, 21px)', color: '#C4934A', fontWeight: 400, textShadow: '0 2px 12px rgba(0,0,0,0.6)' }}
             >
               Your AI partner in Heritage &amp; Archaeology
             </p>
             <p
-              className="max-w-xl mx-auto text-t2"
+              className="max-w-xl mx-auto text-t2 px-2"
               style={{ fontSize: '13px', lineHeight: 1.7, textShadow: '0 1px 8px rgba(0,0,0,0.7)' }}
             >
               Search, interpret, and discover insights from India's archaeological and historical wealth.
@@ -68,7 +68,7 @@ export default function GuestLanding({ onSendMessage, onTopicClick }) {
           </div>
 
           {/* ─── Central Search Bar (real InputArea component) ─── */}
-          <div className="max-w-2xl mx-auto mb-12" style={{ animation: 'guestFadeUp 0.6s 0.1s ease both' }}>
+          <div className="max-w-2xl mx-auto mb-8 sm:mb-12" style={{ animation: 'guestFadeUp 0.6s 0.1s ease both' }}>
             <InputArea onSend={handleInputAreaSend} disabled={false} isGuest={true} />
           </div>
 
@@ -77,7 +77,7 @@ export default function GuestLanding({ onSendMessage, onTopicClick }) {
             <div className="font-serif text-t2 mb-4 px-1" style={{ fontSize: '16px', fontWeight: 500 }}>
               Explore Popular Topics
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5 sm:gap-3.5">
               {TOPIC_CARDS.map((card, i) => (
                 <TopicCard
                   key={card.key}

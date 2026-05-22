@@ -378,7 +378,9 @@ export function ThinkingIndicator({ tone = 'normal', hasImage = false, hasAudio 
         border: '0.5px solid rgba(196,147,74,0.15)',
         borderRadius: 14,
         padding: '14px 18px',
-        minWidth: 280,
+        minWidth: 0,
+        maxWidth: '100%',
+        flex: '1 1 auto',
       }}>
         {steps.map((step, idx) => {
           if (idx >= visibleSteps) return null;
