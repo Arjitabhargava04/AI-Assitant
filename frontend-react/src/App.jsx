@@ -18,19 +18,21 @@ function Router() {
   );
 
   return (
-    <Routes>
+   <Routes>
       <Route path="/login" element={
         user ? <Navigate to={user.isAdmin ? '/admin' : '/chat'} replace /> : <Login />
       }/>
       <Route path="/chat" element={
-        !user ? <Navigate to="/login" replace /> :
-        user.isAdmin ? <Navigate to="/admin" replace /> : <UserChat />
+        // Allow guests to access /chat (will see GuestLanding inside UserChat)
+        user?.isAdmin ? <Navigate to="/admin" replace /> : <UserChat />
       }/>
       <Route path="/admin" element={
         !user ? <Navigate to="/login" replace /> :
         !user.isAdmin ? <Navigate to="/chat" replace /> : <Admin />
       }/>
-      <Route path="*" element={<Navigate to="/login" replace />}/>
+      {/* Root → /chat (now public) */}
+      <Route path="/" element={<Navigate to="/chat" replace />}/>
+      <Route path="*" element={<Navigate to="/chat" replace />}/>
     </Routes>
   );
 }

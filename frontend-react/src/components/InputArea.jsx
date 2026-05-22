@@ -1,5 +1,6 @@
 // src/components/InputArea.jsx
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const TONES = [
   { id: 'normal',      label: 'Normal',      icon: '✍️' },
@@ -9,7 +10,17 @@ const TONES = [
   { id: 'formal',      label: 'Formal',      icon: '🎓' },
 ];
 
-export default function InputArea({ onSend, disabled }) {
+export default function InputArea({ onSend, disabled, isGuest = false }) {
+  const navigate = useNavigate();
+
+  // For guests — any restricted action → go to login page
+  function guestBlock(e) {
+    if (!isGuest) return false;
+    if (e) { e.preventDefault(); e.stopPropagation(); }
+    setPlusOpen(false);
+    navigate('/login');
+    return true;
+  }
   const [text, setText]         = useState('');
   const [tone, setTone]         = useState('normal');
   const [files, setFiles]       = useState({ image: null, audio: null, video: null });
@@ -64,6 +75,7 @@ export default function InputArea({ onSend, disabled }) {
   }
 
   async function attachFileSmart(e) {
+    if (guestBlock(e)) return;  // Guest → login
     const f = e.target.files[0];
     if (!f) return;
 
@@ -93,6 +105,7 @@ export default function InputArea({ onSend, disabled }) {
   }
 
   async function startRecord(type) {
+    if (guestBlock()) return;  // Guest → login
     setPlusOpen(false);
     try {
       const constraints = type === 'audio' ? { audio: true } : { video: true, audio: true };
@@ -266,28 +279,34 @@ export default function InputArea({ onSend, disabled }) {
                 <PlusItem icon="📹" label="Record Video" onClick={() => startRecord('video')} />
                 <div className="h-px bg-b1 my-1" />
                 <div className="relative group">
-                  <div className="flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-t2 hover:bg-bg3 hover:text-t1 cursor-pointer transition-colors">
-  <span className="w-5 flex items-center justify-center">
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
-    </svg>
-  </span>
-  <span>Use style</span>
-  <span className="ml-auto text-t3 text-xs">›</span>
-</div>
-                  <div className="absolute bottom-0 left-full ml-1 bg-bg2 border border-b2 rounded-xl w-44 shadow-xl z-[60] py-1 hidden group-hover:block">
-                    {TONES.map(t => (
-                      <div key={t.id}
-                        onClick={e => { e.stopPropagation(); setTone(t.id); setPlusOpen(false); }}
-                        className={`flex items-center gap-2 px-3.5 py-2.5 text-sm cursor-pointer transition-colors ${
-                          tone === t.id ? 'text-accent' : 'text-t2 hover:bg-bg3 hover:text-t1'
-                        }`}>
-                        <span>{t.icon}</span>
-                        <span>{t.label}</span>
-                        {tone === t.id && <span className="ml-auto text-accent text-xs">✓</span>}
-                      </div>
-                    ))}
+                  <div
+                    onClick={isGuest ? guestBlock : undefined}
+                    className="flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-t2 hover:bg-bg3 hover:text-t1 cursor-pointer transition-colors"
+                  >
+                    <span className="w-5 flex items-center justify-center">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                      </svg>
+                    </span>
+                    <span>Use style</span>
+                    <span className="ml-auto text-t3 text-xs">›</span>
                   </div>
+                  {/* Submenu — hidden for guests */}
+                  {!isGuest && (
+                    <div className="absolute bottom-0 left-full ml-1 bg-bg2 border border-b2 rounded-xl w-44 shadow-xl z-[60] py-1 hidden group-hover:block">
+                      {TONES.map(t => (
+                        <div key={t.id}
+                          onClick={e => { e.stopPropagation(); setTone(t.id); setPlusOpen(false); }}
+                          className={`flex items-center gap-2 px-3.5 py-2.5 text-sm cursor-pointer transition-colors ${
+                            tone === t.id ? 'text-accent' : 'text-t2 hover:bg-bg3 hover:text-t1'
+                          }`}>
+                          <span>{t.icon}</span>
+                          <span>{t.label}</span>
+                          {tone === t.id && <span className="ml-auto text-accent text-xs">✓</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}

@@ -1,11 +1,13 @@
 // src/pages/Login.jsx
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { API, saveUser } from '../utils/api';
 
 export default function Login() {
-  const [tab, setTab]       = useState('login');
+  const [searchParams] = useSearchParams();
+  const initialTab = searchParams.get('tab') === 'signup' ? 'signup' : 'login';
+  const [tab, setTab]       = useState(initialTab);
   const [email, setEmail]   = useState('');
   const [pass, setPass]     = useState('');
   const [name, setName]     = useState('');
@@ -42,15 +44,43 @@ navigate(data.is_admin ? '/admin' : '/chat', { replace: true });
   }
 
   return (
-    <div className="h-full bg-bg flex items-center justify-center p-4">
-      <div className="w-full max-w-sm bg-bg2 border border-b1 rounded-2xl p-10">
+    <div className="h-full flex items-center justify-center p-4 relative overflow-hidden">
+      {/* Background video */}
+      <video
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="fixed top-0 left-0 w-full h-full object-cover z-0"
+      >
+        <source src="/login-video.mp4" type="video/mp4" />
+      </video>
+
+      {/* 65% dark overlay */}
+      <div className="fixed top-0 left-0 w-full h-full bg-black/80 z-15"></div>
+
+      {/* Back to chat link (for guests who don't want to login) */}
+      <button
+        onClick={() => navigate('/chat')}
+        className="absolute top-4 left-4 text-xs text-t3 hover:text-accent transition-colors flex items-center gap-1.5 z-20"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <line x1="19" y1="12" x2="5" y2="12"/>
+          <polyline points="12 19 5 12 12 5"/>
+        </svg>
+        Back to chat
+      </button>
+
+      <div className="w-full max-w-sm bg-bg2/90 backdrop-blur-md border border-b1 rounded-2xl p-10 relative z-20">
 
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-12 h-12 rounded-xl mx-auto mb-3 flex items-center justify-center font-serif text-2xl font-semibold text-white"
-               style={{ background: 'linear-gradient(135deg, #C4934A, #8B6A35)' }}>
-            V
-          </div>
+          <img
+            src="/logo.png"
+            alt="Vikramaditya AI"
+            className="w-20 h-20 mx-auto mb-3"
+            style={{ filter: 'drop-shadow(0 8px 20px rgba(196,147,74,0.35))' }}
+          />
           <div className="font-serif text-2xl font-semibold text-t1">
             Vikramaditya <span className="text-accent">AI</span>
           </div>

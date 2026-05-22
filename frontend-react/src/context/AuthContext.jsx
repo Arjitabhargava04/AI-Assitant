@@ -25,6 +25,7 @@ export function AuthProvider({ children }) {
   function logout() {
     clearUser();
     setUser(null);
+    window.location.href = '/chat';  // hard reload — wipes all React state instantly
   }
 
   return (
