@@ -1,4 +1,8 @@
+<<<<<<< Updated upstream
 #  AI Assistant
+=======
+# Ai Assistant — Heritage & Archaeology Assistant
+>>>>>>> Stashed changes
 
 ## Project Structure
 

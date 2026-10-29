@@ -63,7 +63,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Vikramaditya AI",
+    title="Ai Assistant",
     description="Heritage and Archaeology AI",
     version="4.0.0",
     lifespan=lifespan,
@@ -285,7 +285,7 @@ async def speak(req: SpeakRequest, user: dict = Depends(require_auth)):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "Vikramaditya AI", "version": "4.0.0"}
+    return {"status": "ok", "service": "Ai Assistant", "version": "4.0.0"}
 
 
 if __name__ == "__main__":
