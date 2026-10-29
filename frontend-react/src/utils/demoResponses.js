@@ -23,7 +23,7 @@ I can help you explore:
   },
   {
     heroImage: '/demo/greeting-2.png',
-    title: 'Welcome to Vikramaditya AI 🏛️',
+    title: 'Welcome to Ai Assistant 🏛️',
     markdown: `I'm an AI specialised in **Indian heritage, archaeology and culture**. I can analyse monuments from photos, transcribe inscriptions, identify sculptural styles, and trace historical narratives.
 
 I work with **text, images, audio and video** — upload anything from a temple photograph to a recorded lecture, and I'll help you understand it.

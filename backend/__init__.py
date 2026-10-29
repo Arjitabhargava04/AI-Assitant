@@ -1,1 +1,1 @@
-# Vikramaditya AI Backend
+# Ai Assistant Backend
