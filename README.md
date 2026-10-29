@@ -1,4 +1,4 @@
-# Vikramaditya AI — Heritage & Archaeology Assistant
+#  AI Assistant
 
 ## Project Structure
 
